@@ -19,9 +19,12 @@ import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * OSGi factory component implementing {@link OAuthTokenSupplier} with Adobe IMS OAuth 2.0
@@ -32,9 +35,10 @@ import java.util.*;
  * {@code IMSService}. Each {@link #getAccessToken()} issues a POST and deserializes a 200 JSON body
  * to {@link AccessTokenImpl}.
  * <p>
- * On error responses or I/O failures, logs and returns a placeholder {@link AccessTokenImpl}
- * with token {@code "N/A"} and a synthetic {@code expires_in}; callers must treat such values as
- * invalid (see {@link org.kttn.aem.http.impl.AIOAuthInterceptor} and product-specific validation).
+ * On non-200 responses or I/O failures, logs and returns a placeholder {@link AccessTokenImpl} with token
+ * {@value org.kttn.aem.http.auth.aio.OAuthTokenSupplier#PLACEHOLDER_ACCESS_TOKEN} and {@code expires_in}
+ * {@value #PLACEHOLDER_EXPIRES_IN_SECONDS} (seconds, per OAuth 2.0), so caches treat the token as
+ * already expired relative to {@link org.kttn.aem.http.impl.AIOAuthInterceptor} leniency.
  *
  * @see OAuthTokenSupplier
  */
@@ -57,6 +61,12 @@ public class OAuthTokenSupplierImpl implements OAuthTokenSupplier {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * Placeholder {@code expires_in} in seconds (OAuth 2.0). {@code 0} keeps computed expiry in the
+     * past after {@link org.kttn.aem.http.impl.AIOAuthInterceptor} subtracts its refresh leniency.
+     */
+    static final long PLACEHOLDER_EXPIRES_IN_SECONDS = 0L;
+
     /** Mutable grant parameters refreshed on each {@link #activate} / {@link org.osgi.service.component.annotations.Modified}. */
     protected final Map<String, String> oauthTokenParams = new HashMap<>();
 
@@ -67,6 +77,17 @@ public class OAuthTokenSupplierImpl implements OAuthTokenSupplier {
     private HttpClientProvider httpClientProvider;
     private Config config;
     private CloseableHttpClient client;
+
+    /** OSGi / default; SCR uses this and injects {@link #httpClientProvider}. */
+    public OAuthTokenSupplierImpl() {
+    }
+
+    /**
+     * Package-private for unit tests that need a {@link HttpClientProvider} without the SCR field injector.
+     */
+    OAuthTokenSupplierImpl(final HttpClientProvider httpClientProvider) {
+        this.httpClientProvider = httpClientProvider;
+    }
 
     /**
      * Loads configuration, rebuilds the form parameter map, and binds a pooled client for IMS.
@@ -107,45 +128,37 @@ public class OAuthTokenSupplierImpl implements OAuthTokenSupplier {
     /**
      * {@inheritDoc}
      * <p>
-     * POSTs {@code application/x-www-form-urlencoded} credentials to IMS; on HTTP 200 returns
-     * deserialized {@link AccessTokenImpl}. Any other status or thrown {@link IOException} yields
-     * a placeholder {@link AccessTokenImpl} for observability.
+     * POSTs {@code application/x-www-form-urlencoded} credentials to IMS once; on HTTP 200 returns
+     * deserialized {@link AccessTokenImpl}. If there are no form fields (misconfiguration), logs
+     * and returns a placeholder without calling IMS. Any other non-200 status or {@link IOException}
+     * yields a placeholder {@link AccessTokenImpl} for observability.
      */
     @Override
     public AccessTokenImpl getAccessToken() {
+        final List<NameValuePair> formParams = getOAuthParams();
+        if (formParams.isEmpty()) {
+            log.error("getAccessToken: no OAuth form parameters; cannot call IMS token endpoint");
+            return new AccessTokenImpl(OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN, PLACEHOLDER_EXPIRES_IN_SECONDS);
+        }
+
         final HttpPost httpPost = new HttpPost(OAUTH2_ADOBELOGIN_IMS_TOKEN_URL);
-        httpPost.setEntity(getUrlEncodedFormEntity(getOAuthParams()));
+        httpPost.setEntity(new UrlEncodedFormEntity(formParams, StandardCharsets.UTF_8));
 
         try (final CloseableHttpResponse postResponse = client.execute(httpPost)) {
             final int statusCode = postResponse.getStatusLine().getStatusCode();
             final HttpEntity responseEntity = postResponse.getEntity();
-            final String responseEntityString = EntityUtils.toString(responseEntity);
-            EntityUtils.consume(responseEntity);
+            final String responseEntityString =
+                responseEntity != null ? EntityUtils.toString(responseEntity) : "";
 
             if (statusCode == HttpStatus.SC_OK) {
                 return OBJECT_MAPPER.readValue(responseEntityString, AccessTokenImpl.class);
             }
-            log.error("getAccessToken failed. Response text : {}", responseEntityString);
+            log.error("getAccessToken failed with HTTP {}. Response text : {}", statusCode, responseEntityString);
         } catch (final IOException e) {
             log.error("getAccessToken failed.", e);
         }
 
-        return new AccessTokenImpl("N/A", System.currentTimeMillis() - 1000);
-    }
-
-    /**
-     * Encodes {@code nameValuePairs} as UTF-8 {@code application/x-www-form-urlencoded}.
-     *
-     * @param nameValuePairs form fields
-     * @return entity, or {@code null} if the charset is unsupported (should not happen for UTF-8)
-     */
-    private static UrlEncodedFormEntity getUrlEncodedFormEntity(final List<NameValuePair> nameValuePairs) {
-        try {
-            return new UrlEncodedFormEntity(nameValuePairs, StandardCharsets.UTF_8.name());
-        } catch (UnsupportedEncodingException e) {
-            log.error("getUrlEncodedFormEntity failed.", e);
-            return null;
-        }
+        return new AccessTokenImpl(OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN, PLACEHOLDER_EXPIRES_IN_SECONDS);
     }
 
     /**

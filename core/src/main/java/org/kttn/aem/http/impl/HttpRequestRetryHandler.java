@@ -17,7 +17,9 @@ import java.util.Arrays;
  * retries for {@link java.net.ConnectException}, which the stock handler does not retry.
  * <p>
  * Several exception types remain non-retriable (see constructor); align changes with Apache’s
- * {@link DefaultHttpRequestRetryHandler} behaviour.
+ * {@link DefaultHttpRequestRetryHandler} behaviour. {@link BearerTokenUnavailableException} is
+ * included so transport-layer retries are not wasted on auth preconditions (no bearer after
+ * {@link org.kttn.aem.http.auth.aio.OAuthTokenSupplier#getAccessToken()}).
  *
  * @see <a href="https://github.com/apache/httpcomponents-client/blob/4.5.x/httpclient/src/main/java/org/apache/http/impl/client/DefaultHttpRequestRetryHandler.java">DefaultHttpRequestRetryHandler</a>
  */
@@ -74,7 +76,8 @@ public class HttpRequestRetryHandler extends DefaultHttpRequestRetryHandler {
             UnknownHostException.class,
             NoRouteToHostException.class,
             SSLException.class,
-            SocketTimeoutException.class));
+            SocketTimeoutException.class,
+            BearerTokenUnavailableException.class));
         this.maxRetries = maxRetries;
         this.retryInterval = retryInterval;
     }
@@ -82,6 +85,8 @@ public class HttpRequestRetryHandler extends DefaultHttpRequestRetryHandler {
     /**
      * Enforces {@link #maxRetries}, applies optional {@link #retryInterval} for attempts after
      * the first, then delegates to the parent to classify the {@link IOException}.
+     * If backoff sleep is interrupted, {@linkplain Thread#interrupt() the interrupt status is restored}
+     * and {@code false} is returned.
      *
      * @param exception      failure from the last execution
      * @param executionCount 1-based attempt count for this request
@@ -98,13 +103,15 @@ public class HttpRequestRetryHandler extends DefaultHttpRequestRetryHandler {
         if (executionCount > 1 && retryInterval > 0) {
             try {
                 Thread.sleep(retryInterval);
-            } catch (InterruptedException ignore) {
-                log.info("Ignore InterruptedException");
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.debug("I/O retry backoff interrupted; not retrying");
+                return false;
             }
         }
         final boolean retryRequest = super.retryRequest(exception, executionCount, context);
-        if (log.isInfoEnabled()) {
-            log.info("exception={}, retry={}, executionCount={}", exception.getClass().getName(), retryRequest, executionCount);
+        if (log.isDebugEnabled()) {
+            log.debug("exception={}, retry={}, executionCount={}", exception.getClass().getName(), retryRequest, executionCount);
         }
         return retryRequest;
     }

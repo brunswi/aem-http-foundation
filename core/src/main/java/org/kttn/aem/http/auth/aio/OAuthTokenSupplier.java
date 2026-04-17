@@ -13,6 +13,12 @@ package org.kttn.aem.http.auth.aio;
 public interface OAuthTokenSupplier {
 
     /**
+     * Sentinel {@code access_token} string when acquisition failed; {@link org.kttn.aem.http.impl.AIOAuthInterceptor}
+     * omits the {@code Authorization} header when the current token equals this value.
+     */
+    String PLACEHOLDER_ACCESS_TOKEN = "N/A";
+
+    /**
      * Adobe IMS organization id used in headers such as {@code x-gw-ims-org-id}.
      *
      * @return non-null org identifier when properly configured

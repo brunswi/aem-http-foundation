@@ -39,7 +39,7 @@ Outbound calls are keyed and cached: configuration flows from Metatype into `Htt
 
 **Data objects**
 
-- [HttpConfig](#httpconfig) — timeouts, pool limits, proxy flag, retry settings (ms)
+- [HttpConfig](#httpconfig) — timeouts, pool limits, retry settings (ms)
 
 **Implementations**
 
@@ -110,7 +110,7 @@ AccessToken getAccessToken()
 
 **Features:**
 
-- Implementations may return sentinel tokens on failure; callers should validate before production use
+- Implementations may return a placeholder token on IMS failure; `AIOAuthInterceptor` treats that as “no bearer” and throws `BearerTokenUnavailableException` (fail-fast, not retried as I/O). Other callers of `getAccessToken()` should still validate before use.
 
 ---
 
@@ -132,7 +132,6 @@ public class HttpConfig {
     int socketTimeout;                  // ms — SO_TIMEOUT
     int maxConnection;
     int maxConnectionPerRoute;
-    boolean useProxy;                   // fluent accessor: useProxy()
     int serviceUnavailableMaxRetryCount;
     int serviceUnavailableRetryInterval; // ms
     int ioExceptionMaxRetryCount;
@@ -180,7 +179,6 @@ Callers may also build a custom `HttpConfig` in code and pass it into `HttpClien
 | `http_config_socketTimeout` | 10000 | Socket timeout (ms) |
 | `http_config_maxConnection` | 100 | Total pool size |
 | `http_config_maxConnectionPerRoute` | 20 | Per-route cap |
-| `http_config_useProxy` | false | Egress proxy flag (reserved for future routing) |
 | `http_config_serviceUnavailableMaxRetryCount` | 3 | 503 retries (`0` = off) |
 | `http_config_serviceUnavailableRetryInterval` | 1000 | Delay between 503 retries (ms) |
 | `http_config_ioExceptionMaxRetryCount` | 3 | Retriable I/O retries (`0` = off) |
@@ -199,7 +197,7 @@ Metatype title matches `OAuthTokenSupplierImpl.OSGI_LABEL` (factory instances: o
 
 ### AIOAuthInterceptor
 
-`HttpRequestInterceptor` that sets `x-api-key`, `x-gw-ims-org-id`, and `Authorization: Bearer …` from an `OAuthTokenSupplier`. Skips if `Authorization` is already set. Refreshes the cached token shortly before `expires_in` (seconds), using a configurable **seconds**-based leniency window.
+`HttpRequestInterceptor` that sets `x-api-key`, `x-gw-ims-org-id`, and `Authorization: Bearer …` from an `OAuthTokenSupplier`. Skips if `Authorization` is already set. Refreshes the cached token shortly before `expires_in` (seconds), using a fixed leniency window in seconds. If no usable bearer exists after refresh, throws `BearerTokenUnavailableException` (listed as non-retriable in `HttpRequestRetryHandler`).
 
 - **Location:** [`impl/AIOAuthInterceptor.java`](impl/AIOAuthInterceptor.java)
 
@@ -280,7 +278,6 @@ private HttpConfig extendedTimeouts() {
         60_000,
         defaults.getMaxConnection(),
         defaults.getMaxConnectionPerRoute(),
-        defaults.useProxy(),
         defaults.getServiceUnavailableMaxRetryCount(),
         defaults.getServiceUnavailableRetryInterval(),
         defaults.getIoExceptionMaxRetryCount(),

@@ -3,11 +3,9 @@ package org.kttn.aem.http;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.ToString;
-import lombok.experimental.Accessors;
-
 /**
- * Immutable value object for Apache HttpClient connection limits, timeouts, proxy flag, and
- * retry behaviour. Time fields are expressed in <strong>milliseconds</strong>.
+ * Immutable value object for Apache HttpClient connection limits, timeouts, and retry behaviour.
+ * Time fields are expressed in <strong>milliseconds</strong>.
  * <p>
  * Populated from OSGi via {@link org.kttn.aem.http.impl.HttpConfigServiceImpl}, or built manually
  * when a caller needs overrides (for example extended timeouts for a single outbound integration)
@@ -38,15 +36,6 @@ public class HttpConfig {
     /** Upper bound on concurrent connections per HTTP route (host/scheme). */
     @Getter
     private final int maxConnectionPerRoute;
-
-    /**
-     * Whether outbound traffic should use the platform egress proxy. Interpreted by higher layers
-     * or future {@link org.kttn.aem.http.impl.HttpClientProviderImpl} extensions; pool setup
-     * currently does not read this flag.
-     */
-    @Getter
-    @Accessors(fluent = true)
-    private final boolean useProxy;
 
     /** Maximum number of retries after HTTP 503; {@code 0} disables this retry path. */
     @Getter

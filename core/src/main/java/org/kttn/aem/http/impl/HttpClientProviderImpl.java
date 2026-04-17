@@ -179,33 +179,31 @@ public class HttpClientProviderImpl implements HttpClientProvider {
     /**
      * {@inheritDoc}
      * <p>
-     * Thread-safe for concurrent use; first call per key wins the cache slot (no lock across keys).
+     * Thread-safe: {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} ensures at most one
+     * build per key; the first completing caller supplies {@code config} and {@code builderMutator}.
      */
     @Override
     public CloseableHttpClient provide(
         final String key,
         final HttpConfig config,
         final Consumer<HttpClientBuilder> builderMutator) {
-        if (ENTRY_MAP.containsKey(key)) {
-            return ENTRY_MAP.get(key).getHttpClient();
-        }
+        final HttpClientProviderEntry entry = ENTRY_MAP.computeIfAbsent(key, k -> {
+            final HttpConfig httpConfig = (config != null) ? config : this.httpConfigService.getHttpConfig();
+            final HttpClientConnectionManager connectionManager = createConnectionManager(httpConfig);
+            final HttpClientBuilder httpClientBuilder = createHttpClientBuilder(connectionManager,
+                httpConfig);
+            if (builderMutator != null) {
+                builderMutator.accept(httpClientBuilder);
+            }
 
-        final HttpConfig httpConfig = (config != null) ? config : this.httpConfigService.getHttpConfig();
-        final HttpClientConnectionManager connectionManager = createConnectionManager(httpConfig);
-        final HttpClientBuilder httpClientBuilder = createHttpClientBuilder(connectionManager,
-            httpConfig);
-        if (builderMutator != null) {
-            builderMutator.accept(httpClientBuilder);
-        }
+            httpClientBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
 
-        httpClientBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
-
-        final CloseableHttpClient client = httpClientBuilder.build();
-        final HttpClientProviderEntry entry = new HttpClientProviderEntry.HttpClientProviderEntryBuilder().
-            httpClient(client).
-            connectionManager(connectionManager).build();
-
-        ENTRY_MAP.put(key, entry);
+            final CloseableHttpClient client = httpClientBuilder.build();
+            return new HttpClientProviderEntry.HttpClientProviderEntryBuilder()
+                .httpClient(client)
+                .connectionManager(connectionManager)
+                .build();
+        });
         return entry.getHttpClient();
     }
 

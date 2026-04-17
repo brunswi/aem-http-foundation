@@ -46,7 +46,6 @@ public class HttpConfigServiceImpl implements HttpConfigService {
      * @param config current Metatype
      */
     private void readConfig(@NonNull final Config config) {
-        final boolean useProxy = config.http_config_useProxy();
         final int connectionManagerTimeout = config.http_config_connectionManagerTimeout();
         final int connectionTimeout = config.http_config_connectionTimeout();
         final int ioExceptionRetryCount = config.http_config_ioExceptionMaxRetryCount();
@@ -56,7 +55,7 @@ public class HttpConfigServiceImpl implements HttpConfigService {
         final int serviceUnavailableRetryCount = config.http_config_serviceUnavailableMaxRetryCount();
         final int serviceUnavailableRetryInterval = config.http_config_serviceUnavailableRetryInterval();
         final int socketTimeout = config.http_config_socketTimeout();
-        this.httpConfig = new HttpConfig(connectionTimeout, connectionManagerTimeout, socketTimeout, maxConnection, maxConnectionPerRoute, useProxy, serviceUnavailableRetryCount, serviceUnavailableRetryInterval, ioExceptionRetryCount, ioExceptionRetryInterval);
+        this.httpConfig = new HttpConfig(connectionTimeout, connectionManagerTimeout, socketTimeout, maxConnection, maxConnectionPerRoute, serviceUnavailableRetryCount, serviceUnavailableRetryInterval, ioExceptionRetryCount, ioExceptionRetryInterval);
         LOG.debug("httpConfig: {}", this.httpConfig);
     }
 
@@ -73,7 +72,6 @@ public class HttpConfigServiceImpl implements HttpConfigService {
     @Retention(RetentionPolicy.RUNTIME)
     public @interface Config {
 
-        boolean DEFAULT_USE_PROXY = false;
         int DEFAULT_CONNECTION_MANAGER_TIMEOUT = 10000;
         int DEFAULT_CONNECTION_TIMEOUT = 10000;
         int DEFAULT_IO_EXCEPTION_MAX_RETRY_COUNT = 3;
@@ -108,11 +106,6 @@ public class HttpConfigServiceImpl implements HttpConfigService {
         @AttributeDefinition(name = "Max Connection per Route",
             description = "Max Connection per Route(count) for PoolingHttpClientConnectionManager")
         int http_config_maxConnectionPerRoute() default DEFAULT_MAX_CONNECTIONS_PER_ROUTE;
-
-        /** @return whether to route via platform egress proxy */
-        @AttributeDefinition(name = "Use egress proxy",
-            description = "Use egress proxy for outbound connections")
-        boolean http_config_useProxy() default DEFAULT_USE_PROXY;
 
         /** @return max retries after HTTP 503 ({@code 0} = none) */
         @AttributeDefinition(name = "Maximum number of retries in case of 503 response",

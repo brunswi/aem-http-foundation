@@ -7,8 +7,8 @@ import org.apache.http.impl.client.DefaultServiceUnavailableRetryStrategy;
 import org.apache.http.protocol.HttpContext;
 
 /**
- * Wraps {@link DefaultServiceUnavailableRetryStrategy} with explicit logging and a fast path
- * for HTTP 200 so successful responses are not delegated unnecessarily.
+ * Wraps {@link DefaultServiceUnavailableRetryStrategy} with debug logging and a fast path for
+ * HTTP 200 so successful responses are not delegated unnecessarily.
  *
  * @see <a href="https://github.com/apache/httpcomponents-client/blob/4.5.x/httpclient/src/main/java/org/apache/http/impl/client/DefaultServiceUnavailableRetryStrategy.java">DefaultServiceUnavailableRetryStrategy</a>
  */
@@ -47,8 +47,8 @@ public class ServiceUnavailableRetryStrategy extends DefaultServiceUnavailableRe
             return false;
         }
         final boolean retryRequest = super.retryRequest(response, executionCount, context);
-        if (log.isInfoEnabled()) {
-            log.info("statusCode={}, retry={}, executionCount={}",
+        if (log.isDebugEnabled()) {
+            log.debug("statusCode={}, retry={}, executionCount={}",
                 response.getStatusLine().getStatusCode(), retryRequest, executionCount);
         }
         return retryRequest;

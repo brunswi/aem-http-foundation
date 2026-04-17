@@ -17,6 +17,9 @@ import java.util.concurrent.TimeUnit;
  * Apache {@link HttpRequestInterceptor} that adds Adobe IMS-oriented headers for outbound calls
  * (for example Adobe I/O Runtime with {@code require-adobe-auth}):
  * {@value #API_KEY_HEADER}, {@value #IMS_ORG_ID_HEADER}, and {@code Authorization: Bearer …}.
+ * If the access token is missing, blank, or equals {@link OAuthTokenSupplier#PLACEHOLDER_ACCESS_TOKEN},
+ * throws {@link BearerTokenUnavailableException} so the request is not sent (fail-fast). See that
+ * type for interaction with {@link HttpRequestRetryHandler} and transient IMS recovery.
  * <p>
  * Tokens come from {@link OAuthTokenSupplier#getAccessToken()}. A cached token is reused until
  * shortly before {@link AccessToken#getExpiresIn()} (seconds, per OAuth 2.0) elapses; refresh is
@@ -33,6 +36,10 @@ public class AIOAuthInterceptor
     public static final String API_KEY_HEADER = "x-api-key";
     /** IMS organization id header required by Adobe IMS-secured endpoints. */
     public static final String IMS_ORG_ID_HEADER = "x-gw-ims-org-id";
+
+    /** Message when {@link #hasBearerCredential(AccessToken)} is false after refresh. */
+    public static final String MSG_NO_BEARER =
+        "No valid Adobe IMS bearer token; request not sent.";
 
     /**
      * Refresh this many seconds before the OAuth {@code expires_in} instant so requests do not
@@ -69,10 +76,29 @@ public class AIOAuthInterceptor
             if (expirationTime == null || Instant.now().isAfter(expirationTime)) {
                 refreshCachedToken();
             }
+            if (!hasBearerCredential(accessToken)) {
+                final BearerTokenUnavailableException ex = new BearerTokenUnavailableException(MSG_NO_BEARER);
+                log.warn(ex.getMessage(), ex);
+                throw ex;
+            }
             request.setHeader(API_KEY_HEADER, oAuthTokenSupplier.getClientId());
             request.setHeader(IMS_ORG_ID_HEADER, oAuthTokenSupplier.getOrgId());
             request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken.getAccessToken());
         }
+    }
+
+    /**
+     * @return {@code true} if the token string is suitable for an {@code Authorization: Bearer} header
+     */
+    private static boolean hasBearerCredential(final AccessToken token) {
+        if (token == null) {
+            return false;
+        }
+        final String value = token.getAccessToken();
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return !OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN.equals(value.trim());
     }
 
     /**

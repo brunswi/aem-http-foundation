@@ -12,18 +12,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.kttn.aem.http.HttpClientProvider;
+import org.kttn.aem.http.auth.aio.OAuthTokenSupplier;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import static org.kttn.aem.http.auth.aio.impl.OAuthTokenSupplierImpl.PLACEHOLDER_EXPIRES_IN_SECONDS;
 
 @ExtendWith(MockitoExtension.class)
 class OAuthTokenSupplierImplTest {
@@ -34,10 +38,10 @@ class OAuthTokenSupplierImplTest {
     @Mock
     private CloseableHttpClient httpClient;
 
-    private OAuthTokenSupplierImpl supplier;
+    private OAuthTokenSupplierImplUnderTest supplier;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         when(httpClientProvider.provide(eq("IMSService"))).thenReturn(httpClient);
 
         OAuthTokenSupplierImpl.Config config = mock(OAuthTokenSupplierImpl.Config.class);
@@ -47,11 +51,23 @@ class OAuthTokenSupplierImplTest {
         when(config.clientSecret()).thenReturn("client-secret");
         when(config.scopes()).thenReturn("openid,AdobeID");
 
-        supplier = new OAuthTokenSupplierImpl();
-        Field httpClientProviderField = OAuthTokenSupplierImpl.class.getDeclaredField("httpClientProvider");
-        httpClientProviderField.setAccessible(true);
-        httpClientProviderField.set(supplier, httpClientProvider);
+        supplier = new OAuthTokenSupplierImplUnderTest(httpClientProvider);
         supplier.activate(config);
+    }
+
+    /**
+     * Subclass exposes {@link #clearGrantParametersForTest()} so the empty-form guard can be tested
+     * without reflection.
+     */
+    static final class OAuthTokenSupplierImplUnderTest extends OAuthTokenSupplierImpl {
+
+        OAuthTokenSupplierImplUnderTest(final HttpClientProvider httpClientProvider) {
+            super(httpClientProvider);
+        }
+
+        void clearGrantParametersForTest() {
+            oauthTokenParams.clear();
+        }
     }
 
     @Test
@@ -88,6 +104,26 @@ class OAuthTokenSupplierImplTest {
         when(httpClient.execute(any(HttpPost.class))).thenReturn(response);
 
         AccessTokenImpl token = supplier.getAccessToken();
-        assertEquals("N/A", token.getAccessToken());
+        assertEquals(OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN, token.getAccessToken());
+        assertEquals(PLACEHOLDER_EXPIRES_IN_SECONDS, token.getExpiresIn());
+    }
+
+    @Test
+    void getAccessTokenReturnsPlaceholderOnIOException() throws IOException {
+        when(httpClient.execute(any(HttpPost.class))).thenThrow(new IOException("network down"));
+
+        AccessTokenImpl token = supplier.getAccessToken();
+        assertEquals(OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN, token.getAccessToken());
+        assertEquals(PLACEHOLDER_EXPIRES_IN_SECONDS, token.getExpiresIn());
+    }
+
+    @Test
+    void getAccessTokenReturnsPlaceholderWithoutCallingImsWhenFormParamsEmpty() throws IOException {
+        supplier.clearGrantParametersForTest();
+
+        final AccessTokenImpl token = supplier.getAccessToken();
+        assertEquals(OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN, token.getAccessToken());
+        assertEquals(PLACEHOLDER_EXPIRES_IN_SECONDS, token.getExpiresIn());
+        verify(httpClient, never()).execute(any(HttpPost.class));
     }
 }
