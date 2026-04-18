@@ -1,124 +1,83 @@
-# Sample AEM project template
+# AEM HTTP Foundation
 
-This is a project template for AEM-based applications. It is intended as a best-practice set of examples as well as a potential starting point to develop your own functionality.
+**Drop-in HTTP for AEM:** shared [Apache HttpClient](https://hc.apache.org/) pools, OSGi-driven timeouts and retries, TLS that respects the **AEM trust store**, and an optional **Adobe IMS** pipeline for calling Adobe APIs from your bundles—without reinventing connection management or auth glue in every feature.
 
-## Modules
+You still write normal `HttpGet` / `HttpPost` / `URIBuilder` code; this library owns how the client is built, configured, and (when needed) authenticated.
 
-The main parts of the template are:
+---
 
-* [core:](core/README.md) Java bundle containing all core functionality like OSGi services, listeners or schedulers, as well as component-related Java code such as servlets or request filters.
-* [it.tests:](it.tests/README.md) Java based integration tests
-* [ui.apps:](ui.apps/README.md) contains the /apps (and /etc) parts of the project, ie JS&CSS clientlibs, components, and templates
-* [ui.content:](ui.content/README.md) contains sample content using the components from the ui.apps
-* ui.config: contains runmode specific OSGi configs for the project
-* [ui.frontend:](ui.frontend.general/README.md) an optional dedicated front-end build mechanism (Angular, React or general Webpack project)
-* [ui.tests:](ui.tests/README.md) Cypress based UI tests (for other frameworks check [aem-test-samples](https://github.com/adobe/aem-test-samples) repository
-* all: a single content package that embeds all of the compiled modules (bundles and content packages) including any vendor dependencies
-* analyse: this module runs analysis on the project which provides additional validation for deploying into AEMaaCS
+## What you get on top of plain Apache HttpClient
 
-## How to build
+In an AEM / AEMaaCS project, “just use HttpClient” still leaves you to implement pooling, lifecycle, retries, TLS trust for certs AEM admins install, and—when calling Adobe—IMS tokens and gateway headers. Teams usually reimplement that in every codebase.
 
-To build all the modules run in the project root directory the following command with Maven 3:
+This library gives you:
 
-    mvn clean install
+- Shared [`CloseableHttpClient`](https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/impl/client/CloseableHttpClient.html) instances keyed by name via [`HttpClientProvider`](core/src/main/java/org/kttn/aem/http/HttpClientProvider.java), so one pool per integration instead of ad hoc `new` clients.
+- [`HttpConfigService`](core/src/main/java/org/kttn/aem/http/HttpConfigService.java) / [`HttpConfig`](core/src/main/java/org/kttn/aem/http/HttpConfig.java): connect and socket timeouts, pool limits, and retries on I/O failures and HTTP 503—driven from OSGi config, not hard-coded.
+- TLS that validates server chains against the **AEM Granite keystore** and the JVM trust store ([`HttpClientProviderImpl`](core/src/main/java/org/kttn/aem/http/impl/HttpClientProviderImpl.java)).
+- Optional Adobe IMS: [`OAuthTokenSupplier`](core/src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java) for `client_credentials` tokens and [`AIOAuthInterceptor`](core/src/main/java/org/kttn/aem/http/impl/AIOAuthInterceptor.java) to add `Authorization`, `x-api-key`, and `x-gw-ims-org-id` (with refresh before expiry)—what Adobe I/O Runtime and similar gateways expect.
+- No change to how you build requests: `HttpGet`, `HttpPost`, `URIBuilder`, etc. stay standard Apache.
 
-To build all the modules and deploy the `all` package to a local instance of AEM, run in the project root directory the following command:
+**Modules:** `core` (bundle), `ui.config` (sample OSGi configs), `all` (container package that embeds them for install).
 
-    mvn clean install -PautoInstallSinglePackage
+**Core bundle details:** for architecture, class-by-class notes, OSGi config keys, and longer examples, see the **[`org.kttn.aem.http` package README](core/src/main/java/org/kttn/aem/http/README.md)** (lives next to the sources in `core`).
 
-Or to deploy it to a publish instance, run
+---
 
-    mvn clean install -PautoInstallSinglePackagePublish
+## Using it in your bundle
 
-Or alternatively
+1. Add a Maven dependency on **`aem-http-foundation.core`** (same `groupId` / `version` as this reactor, or your published coordinates).
+2. In AEM, deploy the core bundle (e.g. via the **`all`** package or your own container).
+3. Inject **`HttpClientProvider`** (and optionally **`HttpConfigService`**, **`OAuthTokenSupplier`**) and build requests with the usual Apache HttpClient APIs.
 
-    mvn clean install -PautoInstallSinglePackage -Daem.port=4503
+---
 
-Or to deploy only the bundle to the author, run
+## Examples
 
-    mvn clean install -PautoInstallBundle
+### 1. Pooled client for an integration
 
-Or to deploy only a single content package, run in the sub-module directory (i.e `ui.apps`)
+Use a **stable key** per outbound system so the first caller’s settings (including interceptors) define the pool for that key.
 
-    mvn clean install -PautoInstallPackage
+```java
+@Reference
+private HttpClientProvider httpClientProvider;
 
-## Documentation
+void callRemoteApi() throws IOException {
+    CloseableHttpClient client = httpClientProvider.provide("payments-api");
+    HttpGet get = new HttpGet("https://api.example.com/v1/status");
+    try (CloseableHttpResponse response = client.execute(get)) {
+        // handle response (do not close the shared client here)
+    }
+}
+```
 
-The build process also generates documentation in the form of README.md files in each module directory for easy reference. Depending on the options you select at build time, the content may be customized to your project.
+### 2. Client with Adobe IMS headers (e.g. Adobe I/O Runtime)
 
-## Testing
+Register an interceptor that uses your [`OAuthTokenSupplier`](core/src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java) when the client is **first** created for that key (typically from a `@Component` `activate` method).
 
-There are three levels of testing contained in the project:
+```java
+httpClientProvider.provide(
+    "aio-campaign",
+    httpConfigService.getHttpConfig(),
+    builder -> builder.addInterceptorLast(new AIOAuthInterceptor(oAuthTokenSupplier)));
+```
 
-### Unit tests
+Then build the request URL and body in **your** code (for example [`URIBuilder`](https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/client/utils/URIBuilder.html) + [`HttpPost`](https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/client/methods/HttpPost.html) with a JSON entity) and `execute` with the same `provide("aio-campaign")` without passing the mutator again.
 
-This show-cases classic unit testing of the code contained in the bundle. To
-test, execute:
+---
 
-    mvn clean test
+## Building
 
-### Integration tests
+From the repository root:
 
-This allows running integration tests that exercise the capabilities of AEM via
-HTTP calls to its API. To run the integration tests, run:
+```bash
+mvn clean install
+```
 
-    mvn clean verify -Plocal
+Requires **Java 11+** and **Maven 3.3.9+** (see the parent POM enforcer rules).
 
-Test classes must be saved in the `src/main/java` directory (or any of its
-subdirectories), and must be contained in files matching the pattern `*IT.java`.
+---
 
-The configuration provides sensible defaults for a typical local installation of
-AEM. If you want to point the integration tests to different AEM author and
-publish instances, you can use the following system properties via Maven's `-D`
-flag.
+## License
 
-| Property              | Description                                         | Default value           |
-|-----------------------|-----------------------------------------------------|-------------------------|
-| `it.author.url`       | URL of the author instance                          | `http://localhost:4502` |
-| `it.author.user`      | Admin user for the author instance                  | `admin`                 |
-| `it.author.password`  | Password of the admin user for the author instance  | `admin`                 |
-| `it.publish.url`      | URL of the publish instance                         | `http://localhost:4503` |
-| `it.publish.user`     | Admin user for the publish instance                 | `admin`                 |
-| `it.publish.password` | Password of the admin user for the publish instance | `admin`                 |
-
-The integration tests in this archetype use the [AEM Testing
-Clients](https://github.com/adobe/aem-testing-clients) and showcase some
-recommended [best
-practices](https://github.com/adobe/aem-testing-clients/wiki/Best-practices) to
-be put in use when writing integration tests for AEM.
-
-## Static Analysis
-
-The `analyse` module performs static analysis on the project for deploying into AEMaaCS. It is automatically
-run when executing
-
-    mvn clean install
-
-from the project root directory. Additional information about this analysis and how to further configure it
-can be found here https://github.com/adobe/aemanalyser-maven-plugin
-
-### UI tests
-
-They will test the UI layer of your AEM application using Cypress framework.
-
-Check README file in `ui.tests` module for more details.
-
-Examples of UI tests in different frameworks can be found here: https://github.com/adobe/aem-test-samples
-
-## ClientLibs
-
-The frontend module is made available using an [AEM ClientLib](https://helpx.adobe.com/experience-manager/6-5/sites/developing/using/clientlibs.html). When executing the NPM build script, the app is built and the [`aem-clientlib-generator`](https://github.com/wcm-io-frontend/aem-clientlib-generator) package takes the resulting build output and transforms it into such a ClientLib.
-
-A ClientLib will consist of the following files and directories:
-
-- `css/`: CSS files which can be requested in the HTML
-- `css.txt` (tells AEM the order and names of files in `css/` so they can be merged)
-- `js/`: JavaScript files which can be requested in the HTML
-- `js.txt` (tells AEM the order and names of files in `js/` so they can be merged
-- `resources/`: Source maps, non-entrypoint code chunks (resulting from code splitting), static assets (e.g. icons), etc.
-
-## Maven settings
-
-The project comes with the auto-public repository configured. To setup the repository in your Maven settings, refer to:
-
-    http://helpx.adobe.com/experience-manager/kb/SetUpTheAdobeMavenRepository.html
+See the license headers in the source files (Apache License, Version 2.0 unless noted otherwise).

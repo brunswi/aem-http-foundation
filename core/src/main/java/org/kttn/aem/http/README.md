@@ -7,28 +7,29 @@ Reusable outbound HTTP plumbing for AEM OSGi: pooled Apache `CloseableHttpClient
 Outbound calls are keyed and cached: configuration flows from Metatype into `HttpConfig`, while `HttpClientProvider` builds (or reuses) a client per key. Adobe IMS token acquisition lives in `auth.aio` and is composed via `HttpClientBuilder` interceptors.
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│  HttpClientProvider              HttpConfigService            │
-└────────────┬───────────────────────────┬────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  HttpClientProvider              HttpConfigService         │
+└────────────┬───────────────────────────┬───────────────────┘
              │                           │
-┌────────────▼────────────┐   ┌───────────▼─────────────────────┐
-│ HttpClientProviderImpl  │   │ HttpConfigServiceImpl (OSGi)   │
-│  · pool + SSL + retries │   │  · Metatype → HttpConfig       │
-└────────────┬────────────┘   └───────────────┬─────────────────┘
+┌────────────▼────────────┐   ┌───────────▼──────────────────┐
+│ HttpClientProviderImpl  │   │ HttpConfigServiceImpl (OSGi) │
+│  · pool + SSL + retries │   │  · Metatype → HttpConfig     │
+└────────────┬────────────┘   └───────────────┬──────────────┘
              │                                │
-             │                    ┌─────────────▼─────────────┐
+             │                    ┌─────────────▼───────── ──┐
              │                    │ HttpConfig (immutable)   │
              │                    └──────────────────────────┘
-┌────────────▼────────────────────────────────────────────────┐
-│  impl: keep-alive, HttpRequestRetryHandler,               │
-│        ServiceUnavailableRetryStrategy, HttpClientProviderEntry │
-└────────────┬────────────────────────────────────────────────┘
+┌────────────▼───────────────────────────────────────────────┐
+│  impl: keep-alive, HttpRequestRetryHandler,                │
+│        ServiceUnavailableRetryStrategy,                    │
+│        HttpClientProviderEntry                             │
+└────────────┬───────────────────────────────────────────────┘
              │
-┌────────────▼────────────────────────────────────────────────┐
-│  auth.aio: OAuthTokenSupplier, AccessToken,                 │
-│            OAuthTokenSupplierImpl (IMS client_credentials)   │
+┌────────────▼───────────────────────────────────────────────┐
+│  auth.aio: OAuthTokenSupplier, AccessToken,                │
+│            OAuthTokenSupplierImpl (IMS client_credentials) │
 │  impl: AIOAuthInterceptor (x-api-key, org id, Bearer)      │
-└─────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────┘
 ```
 
 **Public interfaces**
