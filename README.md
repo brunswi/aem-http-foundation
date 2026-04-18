@@ -66,18 +66,6 @@ Then build the request URL and body in **your** code (for example [`URIBuilder`]
 
 ---
 
-## Building
-
-From the repository root:
-
-```bash
-mvn clean install
-```
-
-Requires **Java 11+** and **Maven 3.3.9+** (see the parent POM enforcer rules).
-
----
-
 ## License
 
-See the license headers in the source files (Apache License, Version 2.0 unless noted otherwise).
+Apache License, Version 2.0 
