@@ -11,12 +11,12 @@ Outbound calls are keyed and cached: configuration flows from Metatype into `Htt
 │  HttpClientProvider              HttpConfigService         │
 └────────────┬───────────────────────────┬───────────────────┘
              │                           │
-┌────────────▼────────────┐   ┌───────────▼──────────────────┐
+┌────────────▼────────────┐   ┌──────────▼───────────────────┐
 │ HttpClientProviderImpl  │   │ HttpConfigServiceImpl (OSGi) │
 │  · pool + SSL + retries │   │  · Metatype → HttpConfig     │
 └────────────┬────────────┘   └───────────────┬──────────────┘
              │                                │
-             │                    ┌─────────────▼───────── ──┐
+             │                    ┌───────────▼──────────────┐
              │                    │ HttpConfig (immutable)   │
              │                    └──────────────────────────┘
 ┌────────────▼───────────────────────────────────────────────┐
