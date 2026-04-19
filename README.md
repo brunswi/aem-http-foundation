@@ -2,7 +2,7 @@
 
 **Drop-in HTTP for AEM:** shared [Apache HttpClient](https://hc.apache.org/) pools, OSGi-driven timeouts and retries, TLS that respects the **AEM trust store**, and an optional **Adobe IMS** pipeline for calling Adobe APIs from your bundles—without reinventing connection management or auth glue in every feature.
 
-You still write normal `HttpGet` / `HttpPost` / `URIBuilder` code; this library owns how the client is built, configured, and (when needed) authenticated.
+You still write normal [`HttpGet`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/methods/HttpGet.html) / [`HttpPost`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/methods/HttpPost.html) / [`URIBuilder`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/utils/URIBuilder.html) code; this library owns how the client is built, configured, and (when needed) authenticated.
 
 ---
 
@@ -12,7 +12,7 @@ In an AEM / AEMaaCS project, “just use HttpClient” still leaves you to imple
 
 This library gives you:
 
-- Shared [`CloseableHttpClient`](https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/impl/client/CloseableHttpClient.html) instances keyed by name via [`HttpClientProvider`](core/src/main/java/org/kttn/aem/http/HttpClientProvider.java), so one pool per integration instead of ad hoc `new` clients.
+- Shared [`CloseableHttpClient`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/impl/client/CloseableHttpClient.html) instances keyed by name via [`HttpClientProvider`](core/src/main/java/org/kttn/aem/http/HttpClientProvider.java), so one pool per integration instead of ad hoc `new` clients.
 - [`HttpConfigService`](core/src/main/java/org/kttn/aem/http/HttpConfigService.java) / [`HttpConfig`](core/src/main/java/org/kttn/aem/http/HttpConfig.java): connect and socket timeouts, pool limits, and retries on I/O failures and HTTP 503—driven from OSGi config, not hard-coded.
 - TLS that validates server chains against the **AEM Granite keystore** and the JVM trust store ([`HttpClientProviderImpl`](core/src/main/java/org/kttn/aem/http/impl/HttpClientProviderImpl.java)).
 - Optional Adobe IMS: [`OAuthTokenSupplier`](core/src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java) for `client_credentials` tokens and [`AIOAuthInterceptor`](core/src/main/java/org/kttn/aem/http/impl/AIOAuthInterceptor.java) to add `Authorization`, `x-api-key`, and `x-gw-ims-org-id` (with refresh before expiry)—what Adobe I/O Runtime and similar gateways expect.
@@ -20,7 +20,7 @@ This library gives you:
 
 **Modules:** `core` (bundle), `ui.config` (sample OSGi configs), `all` (container package that embeds them for install).
 
-**Core bundle details:** for architecture, class-by-class notes, OSGi config keys, and longer examples, see the **[`org.kttn.aem.http` package README](core/src/main/java/org/kttn/aem/http/README.md)** (lives next to the sources in `core`).
+**Core bundle details:** for architecture, class-by-class notes, OSGi config keys, and longer examples, see **[`core/README.md`](core/README.md)**.
 
 ---
 
@@ -62,7 +62,7 @@ httpClientProvider.provide(
     builder -> builder.addInterceptorLast(new AIOAuthInterceptor(oAuthTokenSupplier)));
 ```
 
-Then build the request URL and body in **your** code (for example [`URIBuilder`](https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/client/utils/URIBuilder.html) + [`HttpPost`](https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/client/methods/HttpPost.html) with a JSON entity) and `execute` with the same `provide("aio-campaign")` without passing the mutator again.
+Then build the request URL and body in **your** code (for example [`URIBuilder`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/utils/URIBuilder.html) + [`HttpPost`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/methods/HttpPost.html) with a JSON entity) and `execute` with the same `provide("aio-campaign")` without passing the mutator again.
 
 ---
 
