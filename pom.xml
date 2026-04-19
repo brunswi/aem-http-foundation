@@ -26,6 +26,7 @@
       <module>core</module>
       <module>ui.config</module>
    </modules>
+   <!-- Default `maven.deploy.skip` skips maven-deploy-plugin (no distributionManagement); `central-publishing-maven-plugin` on the aggregator bundles parent POM + core for Central. `all` / `ui.config` also skip deploy. `mvn install` still installs every module to ~/.m2. -->
    <properties>
       <aem.host>localhost</aem.host>
       <aem.port>4502</aem.port>
@@ -41,6 +42,10 @@
       <aemanalyser.version>1.6.6</aemanalyser.version>
       <componentGroupName>AEM HTTP Foundation</componentGroupName>
       <lombok.version>1.18.44</lombok.version>
+      <!-- https://central.sonatype.org/publish/publish-portal-maven/ -->
+      <central.publishing.maven.plugin.version>0.10.0</central.publishing.maven.plugin.version>
+      <!-- Skip default maven-deploy-plugin (needs distributionManagement); Central Portal upload is done by central-publishing-maven-plugin on the aggregator. -->
+      <maven.deploy.skip>true</maven.deploy.skip>
    </properties>
    <build>
       <plugins>
@@ -93,6 +98,19 @@
             <artifactId>maven-compiler-plugin</artifactId>
             <configuration>
                <release>11</release>
+            </configuration>
+         </plugin>
+         <!-- Maven Central (Portal): one publish step for parent POM + core; not inherited by child modules. -->
+         <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <inherited>false</inherited>
+            <configuration>
+               <publishingServerId>central</publishingServerId>
+               <excludeArtifacts>
+                  <excludeArtifact>aem-http-foundation.all</excludeArtifact>
+                  <excludeArtifact>aem-http-foundation.ui.config</excludeArtifact>
+               </excludeArtifacts>
             </configuration>
          </plugin>
       </plugins>
@@ -182,6 +200,16 @@
                <groupId>org.apache.maven.plugins</groupId>
                <artifactId>maven-deploy-plugin</artifactId>
                <version>2.8.2</version>
+            </plugin>
+            <!-- Sonatype Central Portal (version + defaults; effective config on aggregator in root pom.xml) -->
+            <plugin>
+               <groupId>org.sonatype.central</groupId>
+               <artifactId>central-publishing-maven-plugin</artifactId>
+               <version>${central.publishing.maven.plugin.version}</version>
+               <extensions>true</extensions>
+               <configuration>
+                  <publishingServerId>central</publishingServerId>
+               </configuration>
             </plugin>
             <!-- Apache Sling Plugin -->
             <plugin>

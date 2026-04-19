@@ -35,6 +35,11 @@
     <name>AEM HTTP Foundation - UI config</name>
     <description>UI config package for AEM HTTP Foundation</description>
 
+    <properties>
+        <!-- Content packages are for local AEM install / CI; only the core bundle goes to Maven Central. -->
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <!-- ====================================================================== -->
     <!-- B U I L D   D E F I N I T I O N                                        -->
     <!-- ====================================================================== -->
