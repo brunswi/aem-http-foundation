@@ -1,16 +1,29 @@
-/* Light gray “paper” look for the default (light) color scheme only */
+@import url('https://fonts.googleapis.com/css2?family=Dosis:wght@200..800&family=Space+Grotesk:wght@300..700&family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
 [data-md-color-scheme="default"] {
   /* Page / chrome background */
   --md-default-bg-color: #fdf0ed;
   /* Inline `code` and fenced blocks base */
-  --md-code-bg-color: #e8a098;
+  --md-code-bg-color: #fbc3b7;
+  --md-typeset-a-color: #5FA8D3;
+  --md-accent-fg-color: #5FA8D3;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-family: 'Work Sans', sans-serif !important;
 }
 
 [data-md-color-scheme="default"] .md-main {
   background-color: var(--md-default-bg-color);
 }
 
+[data-md-color-scheme="default"] .md-typeset code.language-java {
+  background-color: #AEFE8C;
+  border-radius: 0.3em;
+}
+
 [data-md-color-scheme="default"] .md-typeset code {
-  background-color: var(--md-code-bg-color);
+  background-color:var(--md-code-bg-color);
   border-radius: 0.3em;
 }

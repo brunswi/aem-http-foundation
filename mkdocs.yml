@@ -5,6 +5,9 @@ theme:
   name: material
   logo: assets/logo.svg
   favicon: assets/favicon.ico
+  font:
+    text: Work Sans
+    code: Fira Code
   palette:
     scheme: default
     primary: black
