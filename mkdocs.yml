@@ -1,8 +1,10 @@
 # yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
 site_name: AEM HTTP Foundation
 site_url: https://aem.kttn.org/aem-http-foundation/
+repo_url: https://github.com/brunswi/aem-http-foundation
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo.svg
   favicon: assets/favicon.ico
   font:
@@ -14,8 +16,8 @@ theme:
     accent: indigo
 extra:
   social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/brunswi/aem-http-foundation
+    - icon: custom/lgbtqia+
+      link: "#"
 
 extra_css:
   - stylesheets/extra.css

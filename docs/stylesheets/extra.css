@@ -3,7 +3,8 @@
   /* Page / chrome background */
   --md-default-bg-color: #fdf0ed;
   /* Inline `code` and fenced blocks base */
-  --md-code-bg-color: #fbc3b7;
+  --md-code-bg-color: #fcdbd3;
+  --md-java-bg-color: #e6fedc;
   --md-typeset-a-color: #5FA8D3;
   --md-accent-fg-color: #5FA8D3;
 }
@@ -19,11 +20,21 @@
 }
 
 [data-md-color-scheme="default"] .md-typeset code.language-java {
-  background-color: #AEFE8C;
+  background-color: var(--md-java-bg-color);
   border-radius: 0.3em;
 }
 
 [data-md-color-scheme="default"] .md-typeset code {
   background-color:var(--md-code-bg-color);
   border-radius: 0.3em;
+}
+
+[data-md-color-scheme="default"] .md-search__input {
+  border-radius: 0.3em;
+}
+
+.md-social__link[href="#"] {
+  pointer-events: none;
+  cursor: default;
+  opacity: 1; /* optional, avoids "disabled" look */
 }
