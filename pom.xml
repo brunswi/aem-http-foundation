@@ -21,12 +21,25 @@
    <version>1.0.0-SNAPSHOT</version>
    <name>AEM HTTP Foundation</name>
    <description>AEM HTTP Foundation</description>
+   <url>https://aem.kttn.org/aem-http-foundation/</url>
+   <!-- Public docs (MkDocs). Declares the site URL in the POM for Central and other consumers; hosting is out-of-band (mvn site:deploy is not required). -->
+   <distributionManagement>
+      <site>
+         <id>aem-http-foundation-docs</id>
+         <url>https://aem.kttn.org/aem-http-foundation/</url>
+      </site>
+   </distributionManagement>
+   <scm>
+      <connection>scm:git:https://github.com/brunswi/aem-http-foundation.git</connection>
+      <developerConnection>scm:git:git@github.com:brunswi/aem-http-foundation.git</developerConnection>
+      <url>https://github.com/brunswi/aem-http-foundation</url>
+   </scm>
    <modules>
       <module>all</module>
       <module>core</module>
       <module>ui.config</module>
    </modules>
-   <!-- Default `maven.deploy.skip` skips maven-deploy-plugin (no distributionManagement); `central-publishing-maven-plugin` on the aggregator bundles parent POM + core for Central. `all` / `ui.config` also skip deploy. `mvn install` still installs every module to ~/.m2. -->
+   <!-- Default `maven.deploy.skip` skips maven-deploy-plugin (no artifact `repository` / `snapshotRepository`); `central-publishing-maven-plugin` on the aggregator bundles parent POM + core for Central. `distributionManagement.site` is documentation only. `all` / `ui.config` also skip deploy. `mvn install` still installs every module to ~/.m2. -->
    <properties>
       <aem.host>localhost</aem.host>
       <aem.port>4502</aem.port>
