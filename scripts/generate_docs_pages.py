@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Generate docs/index.md and docs/core.md from the repo READMEs for MkDocs.
 
