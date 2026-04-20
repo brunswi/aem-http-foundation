@@ -15,6 +15,9 @@ theme:
     primary: black
     accent: indigo
 extra:
+  maintainer:
+    name: Florian Brunswicker
+    github: brunswi
   social:
     - icon: custom/lgbtqia+
       link: "#"
