@@ -46,16 +46,17 @@ public class HttpConfigServiceImpl implements HttpConfigService {
      * @param config current Metatype
      */
     private void readConfig(@NonNull final Config config) {
-        final int connectionManagerTimeout = config.http_config_connectionManagerTimeout();
-        final int connectionTimeout = config.http_config_connectionTimeout();
-        final int ioExceptionRetryCount = config.http_config_ioExceptionMaxRetryCount();
-        final int ioExceptionRetryInterval = config.http_config_ioExceptionRetryInterval();
-        final int maxConnection = config.http_config_maxConnection();
-        final int maxConnectionPerRoute = config.http_config_maxConnectionPerRoute();
-        final int serviceUnavailableRetryCount = config.http_config_serviceUnavailableMaxRetryCount();
-        final int serviceUnavailableRetryInterval = config.http_config_serviceUnavailableRetryInterval();
-        final int socketTimeout = config.http_config_socketTimeout();
-        this.httpConfig = new HttpConfig(connectionTimeout, connectionManagerTimeout, socketTimeout, maxConnection, maxConnectionPerRoute, serviceUnavailableRetryCount, serviceUnavailableRetryInterval, ioExceptionRetryCount, ioExceptionRetryInterval);
+        this.httpConfig = HttpConfig.builder()
+            .connectionTimeout(config.http_config_connectionTimeout())
+            .connectionManagerTimeout(config.http_config_connectionManagerTimeout())
+            .socketTimeout(config.http_config_socketTimeout())
+            .maxConnection(config.http_config_maxConnection())
+            .maxConnectionPerRoute(config.http_config_maxConnectionPerRoute())
+            .serviceUnavailableMaxRetryCount(config.http_config_serviceUnavailableMaxRetryCount())
+            .serviceUnavailableRetryInterval(config.http_config_serviceUnavailableRetryInterval())
+            .ioExceptionMaxRetryCount(config.http_config_ioExceptionMaxRetryCount())
+            .ioExceptionRetryInterval(config.http_config_ioExceptionRetryInterval())
+            .build();
         LOG.debug("httpConfig: {}", this.httpConfig);
     }
 

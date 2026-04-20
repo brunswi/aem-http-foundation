@@ -1,19 +1,25 @@
 package org.kttn.aem.http;
 
+import lombok.Builder;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.ToString;
 /**
  * Immutable value object for Apache HttpClient connection limits, timeouts, and retry behaviour.
  * Time fields are expressed in <strong>milliseconds</strong>.
  * <p>
- * Populated from OSGi via {@link org.kttn.aem.http.impl.HttpConfigServiceImpl}, or built manually
- * when a caller needs overrides (for example extended timeouts for a single outbound integration)
- * while keeping pool sizing from the service.
+ * Populated from OSGi via {@link org.kttn.aem.http.impl.HttpConfigServiceImpl}, or built with
+ * {@link #toBuilder()} when a caller needs per-integration overrides (for example extended
+ * timeouts) while keeping pool sizing and retry settings from the service defaults.
+ *
+ * <pre>{@code
+ * HttpConfig extended = httpConfigService.getHttpConfig().toBuilder()
+ *     .socketTimeout(120_000)
+ *     .build();
+ * }</pre>
  *
  * @see HttpConfigService
  */
-@RequiredArgsConstructor
+@Builder(toBuilder = true)
 @ToString
 public class HttpConfig {
 
