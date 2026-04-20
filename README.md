@@ -1,6 +1,6 @@
 # AEM HTTP Foundation
 
-Shared outbound HTTP infrastructure for AEM OSGi bundles. Instead of each feature team building its own connection pooling, timeout configuration, TLS wiring, and Adobe IMS authentication from scratch, this library provides them once — letting you focus on the requests that matter to your integration.
+Shared outbound HTTP infrastructure for AEM OSGi bundles.<br>Lets you focus on the requests that matter to your integration, without worrying about connection pooling, timeout configuration, TLS wiring, or Adobe IMS authentication.
 
 ## Why
 
