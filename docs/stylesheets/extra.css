@@ -33,12 +33,6 @@
   border-radius: 0.3em;
 }
 
-.md-social__link[href="#"] {
-  pointer-events: none;
-  cursor: default;
-  opacity: 1; /* optional, avoids "disabled" look */
-}
-
 /*
  * Footer meta bar: Material uses large vertical padding on .md-copyright (.4rem)
  * and especially .md-social (.6rem @ min-width 45em), which sets the whole bar height.

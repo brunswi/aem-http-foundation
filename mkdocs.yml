@@ -20,7 +20,7 @@ extra:
     github: brunswi
   social:
     - icon: custom/lgbtqia+
-      link: "#"
+      link: https://glaad.org/
 
 extra_css:
   - stylesheets/extra.css
