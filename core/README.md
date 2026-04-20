@@ -1,69 +1,57 @@
-# HTTP Package (`org.kttn.aem.http`)
+# `org.kttn.aem.http` — Core Bundle
 
-Reusable outbound HTTP plumbing for AEM OSGi: pooled Apache `CloseableHttpClient` instances, Granite trust-store integration, configurable retries, and optional Adobe IMS OAuth for interceptors.
+Technical reference for the `aem-http-foundation.core` OSGi bundle: architecture, public API, OSGi configuration, and usage examples.
 
-## Architecture Overview
+For a project overview and quick-start guide, see the [root README](../README.md).
 
-Outbound calls are keyed and cached: configuration flows from Metatype into `HttpConfig`, while `HttpClientProvider` builds (or reuses) a client per key. Adobe IMS token acquisition lives in `auth.aio` and is composed via `HttpClientBuilder` interceptors.
+---
+
+## Architecture
+
+Outbound HTTP calls are keyed and pooled. `HttpClientProvider` creates or retrieves a `CloseableHttpClient` per logical key; `HttpConfigService` supplies timeout, pool, and retry settings from OSGi Metatype. Adobe IMS authentication is an optional composition: `OAuthTokenSupplierImpl` acquires tokens, and `AIOAuthInterceptor` injects them via the Apache `HttpClientBuilder` interceptor chain.
 
 ```text
-┌────────────────────────────────────────────────────────────┐
-│  HttpClientProvider              HttpConfigService         │
-└────────────┬───────────────────────────┬───────────────────┘
-             │                           │
-┌────────────▼────────────┐   ┌──────────▼───────────────────┐
-│ HttpClientProviderImpl  │   │ HttpConfigServiceImpl (OSGi) │
-│  · pool + SSL + retries │   │  · Metatype → HttpConfig     │
-└────────────┬────────────┘   └───────────────┬──────────────┘
-             │                                │
-             │                    ┌───────────▼──────────────┐
-             │                    │ HttpConfig (immutable)   │
-             │                    └──────────────────────────┘
-┌────────────▼───────────────────────────────────────────────┐
-│  impl: keep-alive, HttpRequestRetryHandler,                │
-│        ServiceUnavailableRetryStrategy,                    │
-│        HttpClientProviderEntry                             │
-└────────────┬───────────────────────────────────────────────┘
+┌───────────────────────────┐   ┌───────────────────────────────┐
+│   HttpClientProvider      │   │      HttpConfigService        │
+│   (public interface)      │   │      (public interface)       │
+└────────────┬──────────────┘   └──────────────┬────────────────┘
+             │                                 │
+┌────────────▼──────────────┐   ┌──────────────▼────────────────┐
+│  HttpClientProviderImpl   │───│   HttpConfigServiceImpl       │
+│  · PoolingHttpClient...   │   │   (OSGi Metatype → config)    │
+│  · Granite + JVM TLS      │   └───────────────────────────────┘
+│  · per-key client cache   │
+│  · retry handlers         │
+└────────────┬──────────────┘
+             │ optional composition
+┌────────────▼──────────────────────────────────────────────────┐
+│  AIOAuthInterceptor  (HttpRequestInterceptor)                 │
+│  · injects x-api-key, x-gw-ims-org-id, Authorization: Bearer  │
+│  · caches token; refreshes 5 min before expiry                │
+└────────────┬──────────────────────────────────────────────────┘
              │
-┌────────────▼───────────────────────────────────────────────┐
-│  auth.aio: OAuthTokenSupplier, AccessToken,                │
-│            OAuthTokenSupplierImpl (IMS client_credentials) │
-│  impl: AIOAuthInterceptor (x-api-key, org id, Bearer)      │
-└────────────────────────────────────────────────────────────┘
+┌────────────▼──────────────────────────────────────────────────┐
+│  OAuthTokenSupplierImpl  (OSGi factory)                       │
+│  · POSTs client_credentials to Adobe IMS                      │
+│  · returns AccessToken (access_token + expires_in seconds)    │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-**Public interfaces**
+**Supporting internals** (not part of the public API):
 
-- [HttpClientProvider](#httpclientprovider) — pooled clients by logical key
-- [HttpConfigService](#httpconfigservice) — active `HttpConfig` from OSGi
-- [OAuthTokenSupplier and AccessToken](#oauthtokensupplier-and-accesstoken) — IMS credentials and token material
-
-**Data objects**
-
-- [HttpConfig](#httpconfig) — timeouts, pool limits, retry settings (ms)
-
-**Implementations**
-
-- [HttpClientProviderImpl](#httpclientproviderimpl) — OSGi `HttpClientProvider`
-- [HttpConfigServiceImpl](#httpconfigserviceimpl) — OSGi `HttpConfigService`
-- [OAuthTokenSupplierImpl](#oauthtokensupplierimpl) — factory OSGi component for IMS tokens
-- [AIOAuthInterceptor](#aioauthinterceptor) — adds IMS headers to outgoing requests
-
-**Internal / supporting**
-
-- [HttpClientProviderEntry](#httpclientproviderentry), [HttpRequestRetryHandler](#httprequestretryhandler), [ServiceUnavailableRetryStrategy](#serviceunavailableretrystrategy) — pooling lifecycle and retry policies
+- `HttpClientProviderEntry` — pairs a `CloseableHttpClient` with its `HttpClientConnectionManager` for ordered shutdown.
+- `HttpRequestRetryHandler` — extends `DefaultHttpRequestRetryHandler` with configurable delay and `ConnectException` retries; `BearerTokenUnavailableException` is explicitly non-retriable.
+- `ServiceUnavailableRetryStrategy` — wraps `DefaultServiceUnavailableRetryStrategy` with logging and a fast path for HTTP 200.
 
 ---
 
 ## Public interfaces
 
-### HttpClientProvider
+### `HttpClientProvider`
 
-Factory for `CloseableHttpClient` instances. Implementations cache one client per non-null key; the first call for a key builds the pool and applies optional `HttpClientBuilder` mutations (for example interceptors). Passing `null` for `HttpConfig` uses the injected `HttpConfigService` defaults.
+Factory and cache for `CloseableHttpClient` instances. The first call for a given key builds a pooled client and applies any `HttpClientBuilder` mutations (e.g. interceptors); subsequent calls for the same key return the existing client unchanged.
 
-- **Source:** [`HttpClientProvider.java`](src/main/java/org/kttn/aem/http/HttpClientProvider.java)
-
-**Key methods:**
+**Source:** [`HttpClientProvider.java`](src/main/java/org/kttn/aem/http/HttpClientProvider.java)
 
 ```java
 CloseableHttpClient provideDefault()
@@ -72,222 +60,233 @@ CloseableHttpClient provide(String key, HttpConfig config)
 CloseableHttpClient provide(String key, HttpConfig config, Consumer<HttpClientBuilder> builderMutator)
 ```
 
-**Features:**
+- `provideDefault()` is equivalent to `provide("DEFAULT")`.
+- Passing `null` for `config` falls back to the active `HttpConfigService` defaults.
+- Passing `null` for `builderMutator` skips the builder customization step.
+- The `builderMutator` is only invoked when the key is first registered. To attach an interceptor, call `provide(key, config, mutator)` once during component activation, then use `provide(key)` for all subsequent requests.
 
-- Stable keys for per-integration pooling (for example `DEFAULT`, `IMSService`, `aio-oauth`)
-- Optional per-client `HttpConfig` overrides without changing global OSGi settings
-- `builderMutator` hook for `HttpRequestInterceptor` / SSL customizations
+---
 
-### HttpConfigService
+### `HttpConfigService`
 
-Exposes the current `HttpConfig` built from OSGi Metatype after component activation.
+Exposes the current `HttpConfig` snapshot built from OSGi Metatype after component activation.
 
-- **Source:** [`HttpConfigService.java`](src/main/java/org/kttn/aem/http/HttpConfigService.java)
-
-**Key method:**
+**Source:** [`HttpConfigService.java`](src/main/java/org/kttn/aem/http/HttpConfigService.java)
 
 ```java
 HttpConfig getHttpConfig()
 ```
 
-**Returns:**
+Returns a non-null `HttpConfig` once the component has activated.
 
-- Non-null snapshot once the implementing component has activated
+---
 
-### OAuthTokenSupplier and AccessToken
+### `OAuthTokenSupplier` and `AccessToken`
 
-IMS-oriented OAuth for Adobe APIs: org id, client id, and `client_credentials` token responses (`access_token`, `expires_in` in seconds).
+Abstractions for Adobe IMS OAuth credentials. `OAuthTokenSupplier` provides the org ID, client ID, and a freshly acquired `AccessToken`; `AccessToken` carries the bearer string and its `expires_in` duration in **seconds** (per the OAuth 2.0 specification).
 
-- **Source:** [`auth/aio/OAuthTokenSupplier.java`](src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java)
-- **Source:** [`auth/aio/AccessToken.java`](src/main/java/org/kttn/aem/http/auth/aio/AccessToken.java)
-
-**Key methods:**
+**Sources:**
+- [`auth/aio/OAuthTokenSupplier.java`](src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java)
+- [`auth/aio/AccessToken.java`](src/main/java/org/kttn/aem/http/auth/aio/AccessToken.java)
 
 ```java
-String getOrgId()
-String getClientId()
+String      getOrgId()
+String      getClientId()
 AccessToken getAccessToken()
 ```
 
-**Features:**
-
-- Implementations may return a placeholder token on IMS failure; `AIOAuthInterceptor` treats that as “no bearer” and throws `BearerTokenUnavailableException` (fail-fast, not retried as I/O). Other callers of `getAccessToken()` should still validate before use.
+> **On IMS failure:** `OAuthTokenSupplierImpl` returns a placeholder token (constant `OAuthTokenSupplier.PLACEHOLDER_ACCESS_TOKEN`, `expires_in = 0`). `AIOAuthInterceptor` treats this as an unusable bearer and throws `BearerTokenUnavailableException` — the request is not sent. Callers consuming `getAccessToken()` directly should also check for the placeholder value before use.
 
 ---
 
 ## Public data objects
 
-### HttpConfig
+### `HttpConfig`
 
-Immutable constructor-bound settings: all time fields are in **milliseconds**.
+Immutable value object holding timeout, pool, and retry settings. All time fields are in **milliseconds** unless noted otherwise.
 
-- **Source:** [`HttpConfig.java`](src/main/java/org/kttn/aem/http/HttpConfig.java)
-
-**Structure:**
+**Source:** [`HttpConfig.java`](src/main/java/org/kttn/aem/http/HttpConfig.java)
 
 ```java
-@RequiredArgsConstructor
+@Builder(toBuilder = true)
 public class HttpConfig {
-    int connectionTimeout;                // Connect timeout (ms)
-    int connectionManagerTimeout;         // Connection lease from pool (ms)
-    int socketTimeout;                    // Socket timeout (ms)
+    int connectionTimeout;                // TCP connect timeout (ms)
+    int connectionManagerTimeout;         // Max wait to lease a connection from the pool (ms)
+    int socketTimeout;                    // Socket read timeout (ms); 0 = no timeout
     int maxConnection;                    // Total pool size
-    int maxConnectionPerRoute;            // Per-route cap
-    int serviceUnavailableMaxRetryCount;  // 503 retries (0 = off)
+    int maxConnectionPerRoute;            // Per-route connection cap
+    int serviceUnavailableMaxRetryCount;  // Retries after HTTP 503 (0 = disabled)
     int serviceUnavailableRetryInterval;  // Delay between 503 retries (ms)
-    int ioExceptionMaxRetryCount;         // Retriable I/O retries (0 = off)
+    int ioExceptionMaxRetryCount;         // Retries after retriable IOException (0 = disabled)
     int ioExceptionRetryInterval;         // Delay between I/O retries (ms)
 }
 ```
 
+Use `toBuilder()` to create a modified copy from an existing instance without touching unrelated fields:
+
+```java
+HttpConfig extended = httpConfigService.getHttpConfig().toBuilder()
+    .socketTimeout(120_000)
+    .build();
+```
+
 ---
 
-## Public implementations
+## Implementations
 
-### HttpClientProviderImpl
+### `HttpClientProviderImpl`
 
-OSGi `HttpClientProvider`: `PoolingHttpClientConnectionManager`, hybrid AEM + JVM trust manager (service user `truststore-reader`), I/O and 503 retry handlers, keep-alive strategy, `@Deactivate` shutdown.
+OSGi implementation of `HttpClientProvider`. Maintains a key-indexed map of `HttpClientProviderEntry` objects (client + connection manager pairs). On deactivation (`@Deactivate`), all clients and connection managers are closed in order.
 
-- **Location:** [`impl/HttpClientProviderImpl.java`](src/main/java/org/kttn/aem/http/impl/HttpClientProviderImpl.java)
-- **Implements:** `HttpClientProvider`
+**Source:** [`impl/HttpClientProviderImpl.java`](src/main/java/org/kttn/aem/http/impl/HttpClientProviderImpl.java)
 
-**Key dependencies:**
+**OSGi dependencies:**
 
-- `HttpConfigService` — defaults when `provide(..., null, ...)` is used
-- `ResourceResolverFactory` — service resource resolver for trust store access
-- `KeyStoreService` — AEM Granite trust manager
+| Service | Role |
+|---|---|
+| `HttpConfigService` | Default configuration when `config` is `null` in `provide(...)`. |
+| `ResourceResolverFactory` | Opens a service resource resolver under the `truststore-reader` service user for Granite key store access. |
+| `KeyStoreService` | Provides the AEM Granite trust material for TLS validation. |
 
-**Responsibilities:**
+**TLS strategy:** Combines the AEM Granite trust store and the JVM default trust store into a single `X509TrustManager`. AEM-managed certificates are checked first; public CAs still work when absent from the Granite store.
 
-- Cache `CloseableHttpClient` + `HttpClientConnectionManager` pairs per key
-- Merge custom certs from AEM with the JVM default trust store for TLS
+---
 
-### HttpConfigServiceImpl
+### `HttpConfigServiceImpl`
 
-OSGi `HttpConfigService` with Metatype **name** `[HTTP] HTTP Client Configuration`. Override values per run mode with the usual `ui.config` `.cfg.json` patterns for this bundle’s configuration PID (see OSGi console for the exact persistent identifier).
+OSGi implementation of `HttpConfigService`. Single (non-factory) configuration instance.
 
-- **Location:** [`impl/HttpConfigServiceImpl.java`](src/main/java/org/kttn/aem/http/impl/HttpConfigServiceImpl.java)
-- **Implements:** `HttpConfigService`
+**Source:** [`impl/HttpConfigServiceImpl.java`](src/main/java/org/kttn/aem/http/impl/HttpConfigServiceImpl.java)
 
-**Configuration:**
+**OSGi configuration PID:** `org.kttn.aem.http.impl.HttpConfigServiceImpl`
 
-Callers may also build a custom `HttpConfig` in code and pass it into `HttpClientProvider.provide(key, config, mutator)` to override only selected fields (for example extended timeouts) while keeping pool and retry defaults from the service.
+Configure per environment using a `.cfg.json` file in `ui.config`:
+
+```
+ui.config/src/main/content/jcr_root/apps/<app>/osgiconfig/config/
+    org.kttn.aem.http.impl.HttpConfigServiceImpl.cfg.json
+```
 
 | Property | Default | Description |
-|----------|--------:|-------------|
-| `http_config_connectionTimeout` | 10000 | Connect timeout (ms) |
-| `http_config_connectionManagerTimeout` | 10000 | Connection lease from pool (ms) |
-| `http_config_socketTimeout` | 10000 | Socket timeout (ms) |
-| `http_config_maxConnection` | 100 | Total pool size |
-| `http_config_maxConnectionPerRoute` | 20 | Per-route cap |
-| `http_config_serviceUnavailableMaxRetryCount` | 3 | 503 retries (`0` = off) |
-| `http_config_serviceUnavailableRetryInterval` | 1000 | Delay between 503 retries (ms) |
-| `http_config_ioExceptionMaxRetryCount` | 3 | Retriable I/O retries (`0` = off) |
-| `http_config_ioExceptionRetryInterval` | 1000 | Delay between I/O retries (ms) |
+|---|---:|---|
+| `http_config_connectionTimeout` | `10000` | TCP connect timeout (ms) |
+| `http_config_connectionManagerTimeout` | `10000` | Max wait to lease a connection from the pool (ms) |
+| `http_config_socketTimeout` | `10000` | Socket read timeout (ms); `0` = no timeout |
+| `http_config_maxConnection` | `100` | Total pool size |
+| `http_config_maxConnectionPerRoute` | `20` | Per-route connection cap |
+| `http_config_serviceUnavailableMaxRetryCount` | `3` | Retries after HTTP 503; `0` = disabled |
+| `http_config_serviceUnavailableRetryInterval` | `1000` | Delay between 503 retries (ms) |
+| `http_config_ioExceptionMaxRetryCount` | `3` | Retries after retriable `IOException`; `0` = disabled |
+| `http_config_ioExceptionRetryInterval` | `1000` | Delay between I/O retries (ms) |
 
-### OAuthTokenSupplierImpl
-
-Factory OSGi component (`@Designate` factory) that POSTs `client_credentials` to Adobe IMS (`ims-na1.adobelogin.com`) and maps JSON to `AccessTokenImpl`. Uses `HttpClientProvider` with key `IMSService` for the token HTTP call.
-
-- **Location:** [`auth/aio/impl/OAuthTokenSupplierImpl.java`](src/main/java/org/kttn/aem/http/auth/aio/impl/OAuthTokenSupplierImpl.java)
-- **Implements:** `OAuthTokenSupplier`
-
-**Configuration:**
-
-Metatype title matches `OAuthTokenSupplierImpl.OSGI_LABEL` (factory instances: org id, client id, secret, scopes).
-
-### AIOAuthInterceptor
-
-`HttpRequestInterceptor` that sets `x-api-key`, `x-gw-ims-org-id`, and `Authorization: Bearer …` from an `OAuthTokenSupplier`. Skips if `Authorization` is already set. Refreshes the cached token shortly before `expires_in` (seconds), using a fixed leniency window in seconds. If no usable bearer exists after refresh, throws `BearerTokenUnavailableException` (listed as non-retriable in `HttpRequestRetryHandler`).
-
-- **Location:** [`impl/AIOAuthInterceptor.java`](src/main/java/org/kttn/aem/http/impl/AIOAuthInterceptor.java)
-
-**Key dependencies:**
-
-- `OAuthTokenSupplier` — [`auth/aio/OAuthTokenSupplier.java`](src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java)
+Per-integration overrides (without affecting global defaults) can be passed directly to `HttpClientProvider.provide(key, customConfig, mutator)`.
 
 ---
 
-## Internal / supporting types
+### `OAuthTokenSupplierImpl`
 
-### HttpClientProviderEntry
+OSGi factory component implementing `OAuthTokenSupplier`. Each factory instance represents one Adobe Developer Console credential set and POSTs `client_credentials` to the Adobe IMS token endpoint (`https://ims-na1.adobelogin.com/ims/token/v3`). The HTTP call uses `HttpClientProvider` with the reserved key `IMSService`.
 
-Pairs `CloseableHttpClient` with `HttpClientConnectionManager` for ordered shutdown.
+**Source:** [`auth/aio/impl/OAuthTokenSupplierImpl.java`](src/main/java/org/kttn/aem/http/auth/aio/impl/OAuthTokenSupplierImpl.java)
 
-- **Location:** [`impl/HttpClientProviderEntry.java`](src/main/java/org/kttn/aem/http/impl/HttpClientProviderEntry.java)
+**OSGi configuration PID:** `org.kttn.aem.http.auth.aio.impl.OAuthTokenSupplierImpl~<name>`
 
-### HttpRequestRetryHandler
+Because this is a factory component, each `.cfg.json` filename must include a unique suffix (e.g. `…~campaign.cfg.json`) to produce a separate service instance.
 
-Extends Apache `DefaultHttpRequestRetryHandler` with optional delay between attempts and retriable `ConnectException`; several exception types remain non-retriable (see source).
+| Property | Description |
+|---|---|
+| `orgId` | Adobe IMS organization ID |
+| `clientId` | Adobe Developer Console OAuth client ID |
+| `clientSecret` | Adobe Developer Console OAuth client secret |
+| `scopes` | Comma-separated OAuth scopes for the IMS token request |
 
-- **Location:** [`impl/HttpRequestRetryHandler.java`](src/main/java/org/kttn/aem/http/impl/HttpRequestRetryHandler.java)
+---
 
-### ServiceUnavailableRetryStrategy
+### `AIOAuthInterceptor`
 
-Wraps `DefaultServiceUnavailableRetryStrategy` with logging and a fast path for HTTP 200.
+`HttpRequestInterceptor` that injects Adobe IMS headers into outbound requests. Attach it to a named client pool once at activation via `HttpClientProvider.provide(key, config, builder -> builder.addInterceptorLast(...))`.
 
-- **Location:** [`impl/ServiceUnavailableRetryStrategy.java`](src/main/java/org/kttn/aem/http/impl/ServiceUnavailableRetryStrategy.java)
+**Source:** [`impl/AIOAuthInterceptor.java`](src/main/java/org/kttn/aem/http/impl/AIOAuthInterceptor.java)
+
+**Headers set:**
+
+| Header | Value |
+|---|---|
+| `Authorization` | `Bearer <access_token>` |
+| `x-api-key` | `OAuthTokenSupplier.getClientId()` |
+| `x-gw-ims-org-id` | `OAuthTokenSupplier.getOrgId()` |
+
+**Behaviour:**
+
+- Skips entirely if `Authorization` is already present on the request.
+- Caches the active `AccessToken` and proactively refreshes it **5 minutes** before `expires_in` elapses (refresh is synchronized to prevent concurrent stampedes).
+- If no valid token is available after a refresh attempt, throws `BearerTokenUnavailableException`. This exception is registered as non-retriable in `HttpRequestRetryHandler` — the request fails immediately rather than being retried.
 
 ---
 
 ## Usage examples
 
-### Default HTTP client
+### Basic pooled client
 
 ```java
 @Reference
 private HttpClientProvider httpClientProvider;
 
-public void executeRequest() throws IOException {
-    try (CloseableHttpResponse response = httpClientProvider.provideDefault()
-            .execute(new HttpGet("https://example.com/api"))) {
-        // handle entity
+public void fetchStatus() throws IOException {
+    CloseableHttpClient client = httpClientProvider.provide("payments-api");
+    try (CloseableHttpResponse response = client.execute(new HttpGet("https://api.example.com/status"))) {
+        // handle response — do not close the shared client
     }
 }
 ```
 
-### HTTP client with IMS OAuth interceptor
+### Client with Adobe IMS authentication
+
+Register the interceptor once during component activation, then reuse the named pool on every call:
 
 ```java
-@Reference
-private HttpClientProvider httpClientProvider;
+@Component(service = MyService.class, immediate = true)
+public class MyServiceImpl implements MyService {
 
-@Reference
-private OAuthTokenSupplier oAuthTokenSupplier;
+    @Reference private HttpClientProvider httpClientProvider;
+    @Reference private OAuthTokenSupplier oAuthTokenSupplier;
+    @Reference private HttpConfigService httpConfigService;
 
-public CloseableHttpClient getAuthenticatedClient() {
-    return httpClientProvider.provide("aio-oauth", null, builder ->
-        builder.addInterceptorFirst(new AIOAuthInterceptor(oAuthTokenSupplier))
-    );
+    @Activate
+    void activate() {
+        // First call for "aio-campaign": builds pool and attaches interceptor.
+        httpClientProvider.provide(
+            "aio-campaign",
+            httpConfigService.getHttpConfig(),
+            builder -> builder.addInterceptorLast(new AIOAuthInterceptor(oAuthTokenSupplier))
+        );
+    }
+
+    public void callCampaign() throws IOException {
+        // Returns the existing pool — builderMutator is ignored on subsequent calls.
+        CloseableHttpClient client = httpClientProvider.provide("aio-campaign");
+        HttpPost post = new HttpPost("https://mc.adobe.io/your-tenant/campaign/...");
+        post.setEntity(new StringEntity("{}", ContentType.APPLICATION_JSON));
+        try (CloseableHttpResponse response = client.execute(post)) {
+            // handle response
+        }
+    }
 }
 ```
 
-### Custom `HttpConfig` (extended timeouts)
+### Custom `HttpConfig` for a single integration
+
+Use `toBuilder()` to derive a copy from the current service defaults and override only the fields you need:
 
 ```java
-@Reference
-private HttpConfigService httpConfigService;
-
-@Reference
-private HttpClientProvider httpClientProvider;
-
-private HttpConfig extendedTimeouts() {
-    HttpConfig defaults = httpConfigService.getHttpConfig();
-    return new HttpConfig(
-        60_000,
-        60_000,
-        60_000,
-        defaults.getMaxConnection(),
-        defaults.getMaxConnectionPerRoute(),
-        defaults.getServiceUnavailableMaxRetryCount(),
-        defaults.getServiceUnavailableRetryInterval(),
-        defaults.getIoExceptionMaxRetryCount(),
-        defaults.getIoExceptionRetryInterval()
-    );
-}
-
-public CloseableHttpClient getExtendedTimeoutClient() {
-    return httpClientProvider.provide("ext-timeout", extendedTimeouts(), null);
+@Activate
+void activate() {
+    HttpConfig longTimeouts = httpConfigService.getHttpConfig().toBuilder()
+        .connectionTimeout(60_000)
+        .connectionManagerTimeout(60_000)
+        .socketTimeout(120_000)   // longer for slow export APIs
+        .build();
+    httpClientProvider.provide("slow-export-api", longTimeouts, null);
 }
 ```
 
@@ -297,52 +296,44 @@ public CloseableHttpClient getExtendedTimeoutClient() {
 
 ### Hybrid trust manager
 
-**Decision:** Validate server certificates against the AEM Granite trust material first, then fall back to the JVM default trust store.
-
-**Rationale:**
-
-- Custom anchors can be managed in AEM without rebuilding the bundle
-- Public CAs still work when the AEM store does not include every issuer
+Custom certificates installed in the AEM Granite key store take precedence; the JVM default trust store is the fallback. AEM administrators can manage CA certificates without rebuilding or redeploying the bundle.
 
 ### Key-based client cache
 
-**Decision:** One pooled client per `HttpClientProvider.provide` key; configuration and interceptors are fixed at first use for that key.
+One pooled client per key; configuration and interceptors are fixed at the time the key is first registered. This provides predictable connection reuse and clear lifecycle ownership. Integrations are isolated by distinct, stable keys (e.g. `DEFAULT`, `IMSService`, `aio-campaign`).
 
-**Rationale:**
+Keys must be application-defined constants. Do not derive them from user input or request data.
 
-- Predictable connection reuse and simpler lifecycle than per-request clients
-- Callers isolate integrations with distinct keys (`DEFAULT`, `IMSService`, product-specific names)
+### OAuth as interceptor and supplier
 
-### OAuth as interceptor + supplier
-
-**Decision:** Keep `OAuthTokenSupplier` independent of Apache HTTP types; attach `AIOAuthInterceptor` only where IMS headers are required.
-
-**Rationale:**
-
-- Same token service can be reused in tests and non-HTTP contexts
-- HTTP client setup stays in `HttpClientProvider` and `HttpClientBuilder`
+`OAuthTokenSupplier` has no dependency on Apache HTTP types; `AIOAuthInterceptor` is the only component that connects the two. This separation allows the token service to be tested and reused independently of HTTP client setup.
 
 ---
 
 ## Maintenance notes
 
-### Adding a new pooled client key
+### Adding a new pooled integration
 
-1. Choose a stable string (avoid user input as the key).
-2. Call `provide(key, configOrNull, mutatorOrNull)` once per needed combination; reuse the same key everywhere for that integration.
+1. Define a stable, application-scoped key constant.
+2. Call `provide(key, configOrNull, mutatorOrNull)` once on component activation to register the pool.
+3. Call `provide(key)` for all subsequent requests within that component.
 
-### Changing timeouts or retries
+### Changing timeouts or retries globally
 
-1. Prefer OSGi `HttpConfigServiceImpl` Metatype for global defaults.
-2. For a single integration, pass a custom `HttpConfig` only to that key’s `provide` call.
+Update the `HttpConfigServiceImpl` OSGi configuration in `ui.config`. Changes take effect on the next component activation cycle.
 
-### IMS OAuth
+### Changing timeouts for a single integration only
 
-1. Deploy a configured `OAuthTokenSupplierImpl` factory instance (org, client, secret, scopes).
-2. Reference that service and pass it into `AIOAuthInterceptor` when building the client.
+Pass a custom `HttpConfig` to `provide(key, config, mutator)`. Other integrations sharing the same `HttpConfigService` defaults are not affected.
+
+### Adding a new Adobe IMS credential set
+
+1. Create a new factory configuration file for `OAuthTokenSupplierImpl` with a unique name suffix.
+2. Set `orgId`, `clientId`, `clientSecret`, and `scopes` for the target Adobe Developer Console project.
+3. Reference the resulting `OAuthTokenSupplier` service (filtered by factory PID if multiple suppliers are deployed) and pass it into a new `AIOAuthInterceptor` at client build time.
 
 ---
 
-## Related tests
+## Tests
 
-Tests for this package: [`src/test/java/org/kttn/aem/http/`](src/test/java/org/kttn/aem/http/)
+[`src/test/java/org/kttn/aem/http/`](src/test/java/org/kttn/aem/http/)

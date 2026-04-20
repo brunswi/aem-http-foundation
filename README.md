@@ -1,71 +1,92 @@
 # AEM HTTP Foundation
 
-**Drop-in HTTP for AEM:** shared [Apache HttpClient](https://hc.apache.org/) pools, OSGi-driven timeouts and retries, TLS that respects the **AEM trust store**, and an optional **Adobe IMS** pipeline for calling Adobe APIs from your bundles—without reinventing connection management or auth glue in every feature.
+Shared outbound HTTP infrastructure for AEM OSGi bundles. Instead of each feature team building its own connection pooling, timeout configuration, TLS wiring, and Adobe IMS authentication from scratch, this library provides them once — letting you focus on the requests that matter to your integration.
 
-You still write normal [`HttpGet`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/methods/HttpGet.html) / [`HttpPost`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/methods/HttpPost.html) / [`URIBuilder`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/utils/URIBuilder.html) code; this library owns how the client is built, configured, and (when needed) authenticated.
+## Why
 
----
+Every AEM project that calls external APIs faces the same problems:
 
-## What you get on top of plain Apache HttpClient
+- Apache `HttpClient` needs a pooled, lifecycle-managed instance — raw `new DefaultHttpClient()` is not production-ready.
+- Timeouts and retry policies should be externalized to OSGi configuration, not hard-coded.
+- TLS must honor certificates AEM administrators install in the Granite trust store, not just the JVM defaults.
+- Calling Adobe APIs (Campaign, Target, AEM Assets, etc.) requires IMS `client_credentials` tokens plus `x-api-key` and `x-gw-ims-org-id` headers on every request.
 
-In an AEM / AEMaaCS project, “just use HttpClient” still leaves you to implement pooling, lifecycle, retries, TLS trust for certs AEM admins install, and—when calling Adobe—IMS tokens and gateway headers. Teams usually reimplement that in every codebase.
+Solving these correctly takes days. This library solves them once.
 
-This library gives you:
+## What you get
 
-- Shared [`CloseableHttpClient`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/impl/client/CloseableHttpClient.html) instances keyed by name via [`HttpClientProvider`](core/src/main/java/org/kttn/aem/http/HttpClientProvider.java), so one pool per integration instead of ad hoc `new` clients.
-- [`HttpConfigService`](core/src/main/java/org/kttn/aem/http/HttpConfigService.java) / [`HttpConfig`](core/src/main/java/org/kttn/aem/http/HttpConfig.java): connect and socket timeouts, pool limits, and retries on I/O failures and HTTP 503—driven from OSGi config, not hard-coded.
-- TLS that validates server chains against the **AEM Granite keystore** and the JVM trust store ([`HttpClientProviderImpl`](core/src/main/java/org/kttn/aem/http/impl/HttpClientProviderImpl.java)).
-- Optional Adobe IMS: [`OAuthTokenSupplier`](core/src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java) for `client_credentials` tokens and [`AIOAuthInterceptor`](core/src/main/java/org/kttn/aem/http/impl/AIOAuthInterceptor.java) to add `Authorization`, `x-api-key`, and `x-gw-ims-org-id` (with refresh before expiry)—what Adobe I/O Runtime and similar gateways expect.
-- No change to how you build requests: `HttpGet`, `HttpPost`, `URIBuilder`, etc. stay standard Apache.
+| Capability | Details |
+|---|---|
+| **Pooled HTTP clients** | `HttpClientProvider` returns shared `CloseableHttpClient` instances keyed by a logical name — one pool per integration, managed lifecycle, no ad-hoc `new` clients. |
+| **Externalised configuration** | Timeouts, pool sizes, and retry counts come from OSGi Metatype (`HttpConfigServiceImpl`) and can be overridden per run mode. |
+| **AEM-aware TLS** | Server certificates are validated against the AEM Granite trust store first, then the JVM default. Custom CA certs stay in AEM config, not in the bundle. |
+| **Adobe IMS authentication** | `OAuthTokenSupplierImpl` acquires `client_credentials` tokens from Adobe IMS; `AIOAuthInterceptor` injects `Authorization`, `x-api-key`, and `x-gw-ims-org-id` transparently, with automatic token refresh. |
+| **Standard Apache API** | `HttpGet`, `HttpPost`, `URIBuilder` — your request code stays unchanged. |
 
-**Modules:** `core` (bundle), `ui.config` (sample OSGi configs), `all` (container package that embeds them for install).
+## Modules
 
-**Core bundle details:** for architecture, class-by-class notes, OSGi config keys, and longer examples, see **[`core/README.md`](core/README.md)**.
+| Module | Artifact | Purpose |
+|---|---|---|
+| `core` | `aem-http-foundation.core` | OSGi bundle containing all interfaces, implementations, and auth support. |
+| `ui.config` | `aem-http-foundation.ui.config` | Sample OSGi run-mode configuration files for the core bundle. |
+| `all` | `aem-http-foundation.all` | Content package that embeds `core` and `ui.config` for deployment via Cloud Manager or CRX Package Manager. |
 
----
+## Quick start
 
-## Using it in your bundle
+### 1. Add the Maven dependency
 
-1. Add a Maven dependency on **`aem-http-foundation.core`** (same `groupId` / `version` as this reactor, or your published coordinates).
-2. In AEM, deploy the core bundle (e.g. via the **`all`** package or your own container).
-3. Inject **`HttpClientProvider`** (and optionally **`HttpConfigService`**, **`OAuthTokenSupplier`**) and build requests with the usual Apache HttpClient APIs.
+```xml
+<dependency>
+    <groupId>org.kttn.aem</groupId>
+    <artifactId>aem-http-foundation.core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <scope>provided</scope>
+</dependency>
+```
 
----
+### 2. Deploy the bundle
 
-## Examples
+Install the `all` content package, or embed `aem-http-foundation.core` in your own container package.
 
-### 1. Pooled client for an integration
-
-Use a **stable key** per outbound system so the first caller’s settings (including interceptors) define the pool for that key.
+### 3. Inject and call
 
 ```java
 @Reference
 private HttpClientProvider httpClientProvider;
 
-void callRemoteApi() throws IOException {
-    CloseableHttpClient client = httpClientProvider.provide("payments-api");
-    HttpGet get = new HttpGet("https://api.example.com/v1/status");
-    try (CloseableHttpResponse response = client.execute(get)) {
-        // handle response (do not close the shared client here)
+void fetchStatus() throws IOException {
+    CloseableHttpClient client = httpClientProvider.provide("my-api");
+    try (CloseableHttpResponse response = client.execute(new HttpGet("https://api.example.com/status"))) {
+        // handle response — do not close the shared client
     }
 }
 ```
 
-### 2. Client with Adobe IMS headers (e.g. Adobe I/O Runtime)
+### 4. With Adobe IMS authentication
 
-Register an interceptor that uses your [`OAuthTokenSupplier`](core/src/main/java/org/kttn/aem/http/auth/aio/OAuthTokenSupplier.java) when the client is **first** created for that key (typically from a `@Component` `activate` method).
+Register the interceptor once on component activation; the named pool reuses it on every subsequent call.
 
 ```java
-httpClientProvider.provide(
-    "aio-campaign",
-    httpConfigService.getHttpConfig(),
-    builder -> builder.addInterceptorLast(new AIOAuthInterceptor(oAuthTokenSupplier)));
+@Activate
+void activate() {
+    httpClientProvider.provide(
+        "aio-campaign",
+        httpConfigService.getHttpConfig(),
+        builder -> builder.addInterceptorLast(new AIOAuthInterceptor(oAuthTokenSupplier))
+    );
+}
+
+void callCampaign() throws IOException {
+    // Returns the existing pool — interceptor is already attached.
+    CloseableHttpClient client = httpClientProvider.provide("aio-campaign");
+    // ... build and execute your request
+}
 ```
 
-Then build the request URL and body in **your** code (for example [`URIBuilder`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/utils/URIBuilder.html) + [`HttpPost`](https://hc.apache.org/httpcomponents-client-4.5.x/current/httpclient/apidocs/org/apache/http/client/methods/HttpPost.html) with a JSON entity) and `execute` with the same `provide("aio-campaign")` without passing the mutator again.
+## Technical reference
 
----
+For architecture, class-by-class documentation, OSGi configuration properties, and further examples, see **[`core/README.md`](core/README.md)**.
 
 ## License
 
-Apache License, Version 2.0 
+Apache License, Version 2.0
