@@ -93,7 +93,7 @@ def main() -> None:
     )
 
     core = (REPO_ROOT / "core" / "README.md").read_text(encoding="utf-8")
-    core_out = core.replace("](src/", f"]({base}/core/src/")
+    core_out = core.replace("](src/", f"]({base}/core/src/").replace("](../README.md)", "](index.md)")
 
     core_doc = REPO_ROOT / "docs" / "core.md"
     core_doc.write_text(
