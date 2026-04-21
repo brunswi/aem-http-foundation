@@ -456,27 +456,31 @@
                   <groupId>org.apache.sling</groupId>
                   <artifactId>org.apache.sling.scripting.api</artifactId>
                </exclusion>
-                  <exclusion>
-                     <groupId>com.fasterxml.jackson.core</groupId>
-                     <artifactId>jackson-core</artifactId>
-                  </exclusion>
-                  <exclusion>
-                     <groupId>com.fasterxml.jackson.core</groupId>
-                     <artifactId>jackson-databind</artifactId>
-                  </exclusion>
-                  <exclusion>
-                     <groupId>org.apache.commons</groupId>
-                     <artifactId>commons-lang3</artifactId>
-                  </exclusion>
-                  <exclusion>
-                     <groupId>org.apache.jackrabbit</groupId>
-                     <artifactId>jackrabbit-jcr-commons</artifactId>
-                  </exclusion>
-                  <exclusion>
-                     <groupId>commons-fileupload</groupId>
-                     <artifactId>commons-fileupload</artifactId>
-                  </exclusion>
-               </exclusions>
+               <exclusion>
+                  <groupId>org.apache.sling</groupId>
+                  <artifactId>org.apache.sling.api</artifactId>
+               </exclusion>
+               <exclusion>
+                  <groupId>com.fasterxml.jackson.core</groupId>
+                  <artifactId>jackson-core</artifactId>
+               </exclusion>
+               <exclusion>
+                  <groupId>com.fasterxml.jackson.core</groupId>
+                  <artifactId>jackson-databind</artifactId>
+               </exclusion>
+               <exclusion>
+                  <groupId>org.apache.commons</groupId>
+                  <artifactId>commons-lang3</artifactId>
+               </exclusion>
+               <exclusion>
+                  <groupId>org.apache.jackrabbit</groupId>
+                  <artifactId>jackrabbit-jcr-commons</artifactId>
+               </exclusion>
+               <exclusion>
+                  <groupId>commons-fileupload</groupId>
+                  <artifactId>commons-fileupload</artifactId>
+               </exclusion>
+            </exclusions>
          </dependency>
          <dependency>
             <groupId>org.apache.sling</groupId>
