@@ -4,7 +4,8 @@
 Generate docs/index.md and docs/core.md from the repo READMEs for MkDocs.
 
 Source Markdown keeps relative links (good for GitHub and local editing).
-Generated pages rewrite those links to GitHub blob URLs so the published site works.
+Generated pages rewrite most repo-relative links to GitHub blob URLs; README↔README
+cross-links use MkDocs sibling pages (`index.md` / `core.md`) so the site stays in-docs.
 
 Resolve blob base (first match):
   1. DOCS_REPO_BLOB_BASE — full prefix including branch, e.g. https://github.com/owner/repo/blob/develop
@@ -83,7 +84,12 @@ def main() -> None:
     base = blob_base()
 
     root = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    root_out = root.replace("](core/", f"]({base}/core/")
+    # Keep cross-readme navigation on the MkDocs site (symmetric with core → index.md).
+    root_out = (
+        root.replace("](./core/README.md)", "](core.md)")
+        .replace("](core/README.md)", "](core.md)")
+        .replace("](core/", f"]({base}/core/")
+    )
 
     index = REPO_ROOT / "docs" / "index.md"
     index.write_text(
