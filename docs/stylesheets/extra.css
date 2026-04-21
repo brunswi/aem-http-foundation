@@ -4,7 +4,7 @@
   --md-default-bg-color: #fdf0ed;
   /* Inline `code` and fenced blocks base */
   --md-code-bg-color: #fcdbd3;
-  --md-java-bg-color: #e6fedc;
+  --md-code-lang-bg-color: #e6fedc;
   --md-typeset-a-color: #5FA8D3;
   --md-accent-fg-color: #5FA8D3;
 }
@@ -19,9 +19,9 @@
   background-color: var(--md-default-bg-color);
 }
 
-[data-md-color-scheme="default"] .md-typeset code.language-java {
-  background-color: var(--md-java-bg-color);
-  border-radius: 0.3em;
+[data-md-color-scheme="default"] .md-typeset code[class*="language-"] {
+  background-color: var(--md-code-lang-bg-color);
+  border-radius: 0.5em;
 }
 
 [data-md-color-scheme="default"] .md-typeset code {
