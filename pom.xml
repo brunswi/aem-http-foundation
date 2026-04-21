@@ -142,6 +142,8 @@
                <version>3.10.1</version>
                <configuration>
                   <quiet>true</quiet>
+                  <!-- Lombok-generated members are invisible to javadoc; doclint otherwise floods the build -->
+                  <doclint>none</doclint>
                </configuration>
             </plugin>
             <!-- Maven Clean Plugin -->
@@ -447,19 +449,39 @@
          <dependency>
             <groupId>io.wcm</groupId>
             <artifactId>io.wcm.testing.aem-mock.junit5</artifactId>
-            <version>5.5.4</version>
+            <version>5.7.0</version>
             <scope>test</scope>
             <exclusions>
                <exclusion>
                   <groupId>org.apache.sling</groupId>
                   <artifactId>org.apache.sling.scripting.api</artifactId>
                </exclusion>
-            </exclusions>
+                  <exclusion>
+                     <groupId>com.fasterxml.jackson.core</groupId>
+                     <artifactId>jackson-core</artifactId>
+                  </exclusion>
+                  <exclusion>
+                     <groupId>com.fasterxml.jackson.core</groupId>
+                     <artifactId>jackson-databind</artifactId>
+                  </exclusion>
+                  <exclusion>
+                     <groupId>org.apache.commons</groupId>
+                     <artifactId>commons-lang3</artifactId>
+                  </exclusion>
+                  <exclusion>
+                     <groupId>org.apache.jackrabbit</groupId>
+                     <artifactId>jackrabbit-jcr-commons</artifactId>
+                  </exclusion>
+                  <exclusion>
+                     <groupId>commons-fileupload</groupId>
+                     <artifactId>commons-fileupload</artifactId>
+                  </exclusion>
+               </exclusions>
          </dependency>
          <dependency>
             <groupId>org.apache.sling</groupId>
             <artifactId>org.apache.sling.testing.caconfig-mock-plugin</artifactId>
-            <version>1.4.0</version>
+            <version>1.5.4</version>
             <exclusions>
                <exclusion>
                   <groupId>commons-collections</groupId>
@@ -486,9 +508,9 @@
             </exclusions>
          </dependency>
          <dependency>
-            <groupId>uk.org.lidalia</groupId>
+            <groupId>com.github.valfirst</groupId>
             <artifactId>slf4j-test</artifactId>
-            <version>1.0.1</version>
+            <version>3.0.3</version>
             <scope>test</scope>
          </dependency>
       </dependencies>

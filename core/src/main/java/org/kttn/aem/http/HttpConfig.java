@@ -8,7 +8,7 @@ import lombok.ToString;
  * Time fields are expressed in <strong>milliseconds</strong>.
  * <p>
  * Populated from OSGi via {@link org.kttn.aem.http.impl.HttpConfigServiceImpl}, or built with
- * {@link #toBuilder()} when a caller needs per-integration overrides (for example extended
+ * {@code toBuilder()} (from Lombok {@code @Builder(toBuilder = true)}) when a caller needs per-integration overrides (for example extended
  * timeouts) while keeping pool sizing and retry settings from the service defaults.
  *
  * <pre>{@code
