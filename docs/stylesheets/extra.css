@@ -38,7 +38,9 @@
  * and especially .md-social (.6rem @ min-width 45em), which sets the whole bar height.
  */
 .md-footer-meta .md-footer-meta__inner {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0.1rem 0.2rem !important;
 }
 
@@ -51,6 +53,7 @@
 .md-footer-meta .md-social {
   display: inline-flex;
   align-items: center;
+  gap: 0.5rem;
   padding: 0.1rem 0 !important;
   margin: 0 0.4rem;
 }
@@ -65,10 +68,8 @@
   justify-content: center;
   box-sizing: border-box;
   height: 1.3rem;
-  min-width: 2.05rem;
   width: auto;
-  max-width: none;
-  padding: 0 0.1rem;
+  padding: 0;
   line-height: 0;
   overflow: visible;
 }
@@ -76,7 +77,7 @@
 .md-footer-meta .md-social__link svg {
   display: block;
   max-height: none;
-  height: 1rem;
+  height: 1.8rem;
   width: auto;
   max-width: 2rem;
   flex-shrink: 0;
