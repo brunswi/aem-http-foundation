@@ -42,45 +42,9 @@
 }
 
 .md-footer-meta .md-copyright {
-  padding: 0.1rem 0;
+  padding: 0.2rem 0;
   /* Theme uses margin: auto 0.6rem; vertical auto is unnecessary once padding is tight */
   margin: 0 0.6rem;
-}
-
-.md-footer-meta .md-social {
-  /* One size for icon + hit target so the link box is never shorter than the SVG. */
-  --md-extra-footer-social-icon-size: 1.5rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.1rem 0;
-  margin: 0 0.4rem;
-}
-
-/*
- * Footer social: link min-height matches SVG height (variable above) so flex row height
- * and tap target stay consistent. Material caps svg at .8rem unless overridden.
- */
-.md-footer-meta .md-social__link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  min-height: var(--md-extra-footer-social-icon-size);
-  height: auto;
-  width: auto;
-  padding: 0;
-  line-height: 0;
-  overflow: visible;
-}
-
-.md-footer-meta .md-social__link svg {
-  display: block;
-  max-height: none;
-  height: var(--md-extra-footer-social-icon-size);
-  width: auto;
-  max-width: 2rem;
-  flex-shrink: 0;
 }
 
 .md-footer-credit__row {
@@ -125,4 +89,29 @@
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
+}
+
+/*
+ * Header LGBTQIA+ icon styling
+ * Material: `.md-icon svg { fill: currentColor }` — monochromes the icon. Some stripes in
+ * the asset use unclassed rects and inherit; on a dark header that becomes white. Reset the
+ * root `fill` so embedded classes keep their colors and unclassed elements read as black.
+ */
+.md-header__button.md-icon[href*="glaad.org"] svg {
+  display: block;
+  max-height: 2rem;
+  height: 2rem;
+  width: auto;
+  max-width: 2rem;
+  fill: initial; /* initial fill in SVG is black; do not use currentColor */
+}
+
+.md-header__button.md-icon[href*="glaad.org"]:hover {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.md-header__button.md-icon {
+  margin: 0 0.2rem;
+  padding: 0 0.4rem;
 }

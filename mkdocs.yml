@@ -19,9 +19,6 @@ extra:
   maintainer:
     name: Florian Brunswicker
     github: brunswi
-  social:
-    - icon: custom/lgbtqia+
-      link: https://glaad.org/
 
 extra_css:
   - stylesheets/extra.css
