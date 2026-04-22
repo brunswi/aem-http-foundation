@@ -22,6 +22,13 @@
    <name>AEM HTTP Foundation</name>
    <description>AEM HTTP Foundation</description>
    <url>https://aem.kttn.org/aem-http-foundation/</url>
+   <licenses>
+      <license>
+         <name>Apache License, Version 2.0</name>
+         <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+         <distribution>repo</distribution>
+      </license>
+   </licenses>
    <!-- Public docs (MkDocs). Declares the site URL in the POM for Central and other consumers; hosting is out-of-band (mvn site:deploy is not required). -->
    <distributionManagement>
       <site>
@@ -113,7 +120,30 @@
                <release>11</release>
             </configuration>
          </plugin>
-         <!-- Maven Central (Portal): one publish step for parent POM + core; not inherited by child modules. -->
+         <!-- License Plugin -->
+         <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>license-maven-plugin</artifactId>
+            <version>2.4.0</version>
+            <executions>
+               <execution>
+                  <id>aggregate-add-third-party</id>
+                  <phase>generate-resources</phase>
+                  <goals>
+                     <goal>aggregate-add-third-party</goal>
+                  </goals>
+                  <configuration>
+                     <outputDirectory>${project.basedir}</outputDirectory>
+                     <thirdPartyFilename>THIRD-PARTY.txt</thirdPartyFilename>
+
+                     <useMissingFile>true</useMissingFile>
+
+                     <includedScopes>compile,runtime</includedScopes>
+                     <excludedGroups>org\.kttn\.aem</excludedGroups>
+                  </configuration>
+               </execution>
+            </executions>
+         </plugin>         <!-- Maven Central (Portal): one publish step for parent POM + core; not inherited by child modules. -->
          <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>

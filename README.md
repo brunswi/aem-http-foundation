@@ -3,6 +3,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/brunswi/aem-http-foundation/ci.yml?branch=develop&label=CI&logo=github&style=flat-square&color=9bc68d&labelColor=555555)](https://github.com/brunswi/aem-http-foundation/actions)
 [![Security](https://img.shields.io/badge/Security-CodeQL-9bc68d?style=flat-square&logo=github&labelColor=555555)](https://github.com/brunswi/aem-http-foundation/security/code-scanning)
 [![Dependabot](https://img.shields.io/badge/Dependabot-enabled-a1b6d0?style=flat-square&logo=dependabot&labelColor=555555)](https://github.com/brunswi/aem-http-foundation/network/updates)
+[![License](https://img.shields.io/badge/License-Apache--2.0-a1b6d0?style=flat-square&labelColor=555555)](LICENSE)
 
 Shared outbound HTTP infrastructure for AEM OSGi bundles.<br>Lets you focus on the requests that matter to your integration, without worrying about connection pooling, timeout configuration, TLS wiring, or Adobe IMS authentication.
 
