@@ -62,6 +62,8 @@
       <aemanalyser.version>1.6.18</aemanalyser.version>
       <componentGroupName>AEM HTTP Foundation</componentGroupName>
       <lombok.version>1.18.46</lombok.version>
+      <!-- Mockito: version used for dependencyManagement and Surefire -javaagent (avoids JDK 21+ self-attach / Byte Buddy dynamic agent warnings). -->
+      <mockito.version>5.23.0</mockito.version>
       <!-- https://central.sonatype.org/publish/publish-portal-maven/ -->
       <central.publishing.maven.plugin.version>0.10.0</central.publishing.maven.plugin.version>
       <!-- Skip default maven-deploy-plugin (needs distributionManagement); Central Portal upload is done by central-publishing-maven-plugin on the aggregator. -->
@@ -238,6 +240,8 @@
                <version>3.5.5</version>
                <configuration>
                   <useSystemClassLoader>false</useSystemClassLoader>
+                  <!-- Load Mockito as a JVM agent at fork startup (see Mockito javadoc "0.3") so the inline mock maker does not self-attach. That removes JDK 21+ dynamic agent warnings from Byte Buddy. -Xshare:off avoids CDS noise when an agent is present ("bootstrap classpath has been appended"). -->
+                  <argLine>-Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
                </configuration>
             </plugin>
             <!-- Maven Deploy Plugin -->
@@ -467,13 +471,13 @@
          <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>5.23.0</version>
+            <version>${mockito.version}</version>
             <scope>test</scope>
          </dependency>
          <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-junit-jupiter</artifactId>
-            <version>5.23.0</version>
+            <version>${mockito.version}</version>
             <scope>test</scope>
          </dependency>
          <dependency>
