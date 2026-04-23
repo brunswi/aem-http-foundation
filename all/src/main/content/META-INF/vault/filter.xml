@@ -16,5 +16,6 @@
   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
 <workspaceFilter version="1.0">
     <filter root="/apps/aem-http-foundation-packages"/>
-    <filter root="/apps/aem-http-foundation-vendor-packages"/>
+    <!-- Vendor packages are not included in the all package -->
+    <!--filter root="/apps/aem-http-foundation-vendor-packages"/-->
 </workspaceFilter>
