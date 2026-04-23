@@ -59,7 +59,7 @@
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
       <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
       <aem.sdk.api>2026.3.25194.20260330T181734Z-260300</aem.sdk.api>
-      <aemanalyser.version>1.6.6</aemanalyser.version>
+      <aemanalyser.version>1.6.18</aemanalyser.version>
       <componentGroupName>AEM HTTP Foundation</componentGroupName>
       <lombok.version>1.18.46</lombok.version>
       <!-- https://central.sonatype.org/publish/publish-portal-maven/ -->
