@@ -61,7 +61,7 @@
       <aem.sdk.api>2026.3.25194.20260330T181734Z-260300</aem.sdk.api>
       <aemanalyser.version>1.6.6</aemanalyser.version>
       <componentGroupName>AEM HTTP Foundation</componentGroupName>
-      <lombok.version>1.18.44</lombok.version>
+      <lombok.version>1.18.46</lombok.version>
       <!-- https://central.sonatype.org/publish/publish-portal-maven/ -->
       <central.publishing.maven.plugin.version>0.10.0</central.publishing.maven.plugin.version>
       <!-- Skip default maven-deploy-plugin (needs distributionManagement); Central Portal upload is done by central-publishing-maven-plugin on the aggregator. -->
