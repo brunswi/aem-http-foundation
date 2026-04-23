@@ -163,10 +163,11 @@ Import-Package: javax.annotation;version=0.0.0,*
             <version>1.6.0</version>
             <scope>test</scope>
         </dependency>
+        <!-- Stay on Johnzon 1.x: aem-sdk-api hardcodes javax JsonProvider against Johnzon 1; 2.x is jakarta-only. -->
         <dependency>
             <groupId>org.apache.johnzon</groupId>
             <artifactId>johnzon-core</artifactId>
-            <version>1.2.21</version>
+            <version>1.2.22</version>
             <scope>test</scope>
         </dependency>
         <dependency>
