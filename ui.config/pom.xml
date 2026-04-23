@@ -54,7 +54,7 @@
                     <properties>
                         <cloudManagerTarget>none</cloudManagerTarget>
                     </properties>
-                    <packageType>mixed</packageType>
+                    <packageType>container</packageType>
                     <showImportPackageReport>false</showImportPackageReport>
                 </configuration>
             </plugin>
