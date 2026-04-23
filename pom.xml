@@ -55,7 +55,7 @@
       <vault.user>admin</vault.user>
       <vault.password>admin</vault.password>
       <core.wcm.components.version>2.30.4</core.wcm.components.version>
-      <bnd.version>6.4.0</bnd.version>
+      <bnd.version>7.2.3</bnd.version>
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
       <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
       <aem.sdk.api>2026.4.25520.20260417T163942Z-260300</aem.sdk.api>
