@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
+site_name: AEM HTTP Foundation
+site_url: https://aem.kttn.org/aem-http-foundation/
+repo_url: https://github.com/brunswi/aem-http-foundation
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+  # Material loads these from Google Fonts; avoid duplicating via @import in extra.css.
+  font:
+    text: Work Sans
+    code: Fira Code
+  palette:
+    scheme: default
+    primary: black
+    accent: indigo
+extra:
+  maintainer:
+    name: Florian Brunswicker
+    github: brunswi
+
+extra_css:
+  - stylesheets/extra.css
+plugins:
+  - search
+nav:
+  - Home: index.md
+  - Integration: integration.md
+  - Examples: examples.md
+  - Technical Reference: reference.md
+
+markdown_extensions:
+  - toc:
+      toc_depth: 2

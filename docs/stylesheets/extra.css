@@ -1,0 +1,117 @@
+[data-md-color-scheme="default"] {
+  /* Page / chrome background */
+  --md-default-bg-color: #fdf0ed;
+  /* Inline `code` and fenced blocks base */
+  --md-code-bg-color: #fcdbd3;
+  --md-code-lang-bg-color: #e6fedc;
+  --md-typeset-a-color: #5FA8D3;
+  --md-accent-fg-color: #5FA8D3;
+  /* Radii: inline `code`, search, and prose surfaces use the tighter value; fenced blocks
+     (`code.language-*`) use a slightly rounder corner so code blocks read as “blocks”. */
+  --md-extra-radius-code: 0.3em;
+  --md-extra-radius-code-lang: 0.5em;
+}
+
+[data-md-color-scheme="default"] .md-main {
+  background-color: var(--md-default-bg-color);
+}
+
+[data-md-color-scheme="default"] .md-typeset code[class*="language-"] {
+  background-color: var(--md-code-lang-bg-color);
+  border-radius: var(--md-extra-radius-code-lang);
+}
+
+[data-md-color-scheme="default"] .md-typeset code {
+  background-color: var(--md-code-bg-color);
+  border-radius: var(--md-extra-radius-code);
+}
+
+[data-md-color-scheme="default"] .md-search__input {
+  border-radius: var(--md-extra-radius-code);
+}
+
+/*
+ * Footer meta bar: Material uses large vertical padding on .md-copyright (.4rem)
+ * and especially .md-social (.6rem @ min-width 45em), which sets the whole bar height.
+ */
+.md-footer-meta .md-footer-meta__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.1rem 0.2rem;
+}
+
+.md-footer-meta .md-copyright {
+  padding: 0.2rem 0;
+  /* Theme uses margin: auto 0.6rem; vertical auto is unnecessary once padding is tight */
+  margin: 0 0.6rem;
+}
+
+.md-footer-credit__row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  line-height: 1.25;
+}
+
+/* Same size for all footer credit text (avoids .md-typeset link scaling) */
+.md-footer-meta.md-typeset .md-footer-credit__row,
+.md-footer-meta.md-typeset .md-footer-credit__row a,
+.md-footer-meta.md-typeset .md-footer-credit__suffix {
+  font-size: 0.65rem;
+}
+
+.md-footer-maintainer__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--md-typeset-color);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.md-footer-credit__material {
+  color: var(--md-typeset-color);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.md-footer-maintainer__link:hover,
+.md-footer-credit__material:hover {
+  color: var(--md-accent-fg-color);
+}
+
+.md-footer-maintainer__avatar {
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/*
+ * Header LGBTQIA+ icon styling
+ * Material: `.md-icon svg { fill: currentColor }` — monochromes the icon. Some stripes in
+ * the asset use unclassed rects and inherit; on a dark header that becomes white. Reset the
+ * root `fill` so embedded classes keep their colors and unclassed elements read as black.
+ */
+.md-header__button.md-icon[href*="glaad.org"] svg {
+  display: block;
+  max-height: 2rem;
+  height: 2rem;
+  width: auto;
+  max-width: 2rem;
+  fill: initial; /* initial fill in SVG is black; do not use currentColor */
+}
+
+.md-header__button.md-icon[href*="glaad.org"]:hover {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.md-header__button.md-icon {
+  margin: 0 0.2rem;
+  padding: 0 0.4rem;
+}
