@@ -152,6 +152,7 @@
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
             <inherited>false</inherited>
+            <extensions>true</extensions>
             <configuration>
                <publishingServerId>central</publishingServerId>
                <excludeArtifacts>
