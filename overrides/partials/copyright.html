@@ -1,0 +1,28 @@
+<div class="md-copyright md-footer-credit">
+  <div class="md-footer-credit__row">
+    <a
+      href="https://github.com/{{ config.extra.maintainer.github }}"
+      class="md-footer-maintainer__link"
+      rel="noopener"
+      target="_blank"
+    >
+      <img
+        class="md-footer-maintainer__avatar"
+        src="https://github.com/{{ config.extra.maintainer.github }}.png?size=40"
+        alt=""
+        decoding="async"
+      />
+      <span>Maintained by {{ config.extra.maintainer.name }}</span>
+    </a>
+    <span class="md-footer-credit__suffix">, made with&nbsp;</span>
+    <a
+      class="md-footer-credit__material"
+      href="https://squidfunk.github.io/mkdocs-material/"
+      target="_blank"
+      rel="noopener"
+      >Material for MkDocs</a>
+  </div>
+  {% if config.copyright %}
+    <div class="md-copyright__highlight">{{ config.copyright }}</div>
+  {% endif %}
+</div>
