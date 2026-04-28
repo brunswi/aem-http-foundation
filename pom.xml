@@ -85,7 +85,7 @@
       <!-- https://central.sonatype.org/publish/publish-portal-maven/ -->
       <central.publishing.maven.plugin.version>0.10.0</central.publishing.maven.plugin.version>
       <!-- JaCoCo for code coverage reporting (Cloud Manager expects jacoco-aggregate.xml) -->
-      <jacoco.version>0.8.12</jacoco.version>
+      <jacoco.version>0.8.14</jacoco.version>
       <!-- SonarQube configuration: Cloud Manager scans for coverage at this location -->
       <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/all/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
    </properties>
