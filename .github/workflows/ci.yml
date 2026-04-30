@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # Codecov upload via OIDC (optional CODECOV_TOKEN secret still works)
 
 jobs:
   build:
@@ -24,8 +25,16 @@ jobs:
           distribution: 'temurin' # High-quality, widely used JDK distribution
           cache: maven
 
-      - name: Build and Test with Maven
-        run: mvn -B package --file pom.xml
+      - name: Build, test, and JaCoCo reports
+        run: mvn -B verify --file pom.xml
+
+      - name: Upload coverage to Codecov (core module)
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: core/target/site/jacoco/jacoco.xml
+          disable_search: true
+          fail_ci_if_error: false
 
   # Validate MkDocs on integration branches and PRs; no deploy (see docs.yml).
   docs:
