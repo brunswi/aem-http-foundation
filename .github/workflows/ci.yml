@@ -28,11 +28,11 @@ jobs:
       - name: Build, test, and JaCoCo reports
         run: mvn -B verify --file pom.xml
 
-      - name: Upload coverage to Codecov (core module)
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true
-          files: core/target/site/jacoco/jacoco.xml
+          files: all/target/site/jacoco-aggregate/jacoco.xml
           disable_search: true
           fail_ci_if_error: false
 
