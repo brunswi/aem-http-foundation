@@ -41,7 +41,7 @@ public interface HttpClientProvider {
      * @return cached or newly created client
      */
     default CloseableHttpClient provide(String key) {
-        return provide(key, null);
+        return provide(key, (HttpConfig) null);
     }
 
     /**
@@ -54,6 +54,20 @@ public interface HttpClientProvider {
      */
     default CloseableHttpClient provide(String key, HttpConfig config) {
         return provide(key, config, null);
+    }
+
+    /**
+     * Returns a client for the given key using default configuration and the supplied builder
+     * mutator. Prefer this overload over {@code provide(key, null, mutator)} when you want to
+     * attach interceptors (for example via {@link org.kttn.aem.http.auth.HttpClientCustomizer})
+     * without overriding timeouts or pool limits.
+     *
+     * @param key            non-null logical cache key
+     * @param builderMutator hook to register interceptors or other builder settings
+     * @return cached or newly created client
+     */
+    default CloseableHttpClient provide(String key, Consumer<HttpClientBuilder> builderMutator) {
+        return provide(key, null, builderMutator);
     }
 
     /**

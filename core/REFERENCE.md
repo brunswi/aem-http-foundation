@@ -220,7 +220,16 @@ Typical usage:
 CloseableHttpClient client = httpClientProvider.provide("orders-api");
 ```
 
-or with customization:
+or with a customizer and default config:
+
+```java
+CloseableHttpClient client = httpClientProvider.provide(
+    "orders-api",
+    builder -> builder.addInterceptorLast(myInterceptor)
+);
+```
+
+or with explicit config and customizer:
 
 ```java
 CloseableHttpClient client = httpClientProvider.provide(

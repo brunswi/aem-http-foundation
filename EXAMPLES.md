@@ -142,11 +142,7 @@ public class AdobeIoRuntimeServiceImpl implements AdobeIoRuntimeService {
 
     @Activate
     void activate() {
-        httpClient = httpClientProvider.provide(
-            "aio-runtime-prod",
-            null,
-            adobeCustomizer::customize
-        );
+        httpClient = httpClientProvider.provide("aio-runtime-prod", adobeCustomizer::customize);
     }
 
     @Override

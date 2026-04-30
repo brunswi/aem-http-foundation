@@ -48,7 +48,8 @@ class HttpClientBuilderMutatorTest {
     }
 
     /**
-     * Test that the builder mutator is actually called.
+     * Verifies that the two-argument {@code provide(key, mutator)} overload invokes the mutator
+     * during client construction, using default configuration (no explicit {@link HttpConfig}).
      */
     @Test
     void testBuilderMutatorIsActuallyCalled() {
@@ -56,18 +57,15 @@ class HttpClientBuilderMutatorTest {
 
         httpClientProvider.provide(
             "test-mutator",
-            null,
-            builder -> {
-                mutatorWasCalled[0] = true;
-                // Don't actually modify anything, just track that we were called
-            }
+            builder -> mutatorWasCalled[0] = true
         );
 
         assertTrue(mutatorWasCalled[0], "Builder mutator must be called during client creation");
     }
 
     /**
-     * Test that changes made via the mutator are reflected in the resulting client.
+     * Verifies that an interceptor registered via the mutator is active on the resulting client:
+     * the server-side handler observes the header the interceptor injects into every request.
      */
     @Test
     void testBuilderMutatorChangesAreApplied() throws Exception {
@@ -81,10 +79,8 @@ class HttpClientBuilderMutatorTest {
             exchange.getResponseBody().close();
         });
 
-        // Create a client with a mutator that adds an interceptor
         CloseableHttpClient httpClient = httpClientProvider.provide(
             "test-mutator-applied",
-            null,
             builder -> builder.addInterceptorLast((HttpRequestInterceptor) (request, context) -> request.setHeader("X-Test-Mutator", "mutator-was-applied"))
         );
 
@@ -100,7 +96,8 @@ class HttpClientBuilderMutatorTest {
     }
 
     /**
-     * Test that multiple customizations can be chained in a single mutator.
+     * Verifies that multiple interceptors registered in a single mutator are all applied:
+     * both custom headers appear in the request received by the server.
      */
     @Test
     void testMultipleCustomizationsViaBuilderMutator() throws Exception {
@@ -116,18 +113,11 @@ class HttpClientBuilderMutatorTest {
             exchange.getResponseBody().close();
         });
 
-        // Create a client with multiple customizations
         CloseableHttpClient httpClient = httpClientProvider.provide(
             "test-multi-mutator",
-            null,
             builder -> {
-                // Add multiple interceptors
                 builder.addInterceptorLast((HttpRequest request, HttpContext context) -> request.setHeader("X-Custom-1", "value-1"));
                 builder.addInterceptorLast((HttpRequest request, HttpContext context) -> request.setHeader("X-Custom-2", "value-2"));
-                // Could also customize other aspects:
-                // builder.setUserAgent("custom-agent");
-                // builder.setRetryHandler(...);
-                // etc.
             }
         );
 
@@ -140,6 +130,36 @@ class HttpClientBuilderMutatorTest {
         // Verify both headers were added
         assertEquals("value-1", receivedHeader1[0], "First header should be present");
         assertEquals("value-2", receivedHeader2[0], "Second header should be present");
+    }
+
+    /**
+     * Verifies that {@code provide(key, mutator)} — the two-argument overload without an explicit
+     * {@link HttpConfig} — delegates to the full three-argument method with {@code null} config,
+     * producing a client that uses the service defaults and still applies the mutator. Confirms no
+     * {@code NullPointerException} or ambiguity arises from the {@code null} config slot.
+     */
+    @Test
+    void twoArgOverloadWithMutatorUsesDefaultConfigAndAppliesMutator() throws Exception {
+        httpServer.registerHandler("/two-arg", exchange -> {
+            String header = exchange.getRequestHeaders().getFirst("X-Two-Arg");
+            String response = header != null ? header : "missing";
+            exchange.sendResponseHeaders(200, response.length());
+            exchange.getResponseBody().write(response.getBytes(StandardCharsets.UTF_8));
+            exchange.getResponseBody().close();
+        });
+
+        CloseableHttpClient client = httpClientProvider.provide(
+            "test-two-arg-overload",
+            builder -> builder.addInterceptorLast(
+                (HttpRequestInterceptor) (req, ctx) -> req.setHeader("X-Two-Arg", "present"))
+        );
+
+        HttpGet request = new HttpGet(httpServer.getUriFor("/two-arg"));
+        try (CloseableHttpResponse response = client.execute(request)) {
+            assertEquals(200, response.getStatusLine().getStatusCode());
+            String body = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            assertEquals("present", body, "Mutator interceptor must be active on the client");
+        }
     }
 
     /**
