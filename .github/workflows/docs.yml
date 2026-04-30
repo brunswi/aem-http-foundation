@@ -3,8 +3,9 @@
 name: Deploy documentation
 
 on:
+  # Publish static docs from the release line only; develop runs CI but does not overwrite Pages.
   push:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

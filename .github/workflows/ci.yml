@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # Codecov upload via OIDC (optional CODECOV_TOKEN secret still works)
 
 jobs:
   build:
@@ -24,5 +25,37 @@ jobs:
           distribution: 'temurin' # High-quality, widely used JDK distribution
           cache: maven
 
-      - name: Build and Test with Maven
-        run: mvn -B package --file pom.xml
+      - name: Build, test, and JaCoCo reports
+        run: mvn -B verify --file pom.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: all/target/site/jacoco-aggregate/jacoco.xml
+          disable_search: true
+          fail_ci_if_error: false
+
+  # Validate MkDocs on integration branches and PRs; no deploy (see docs.yml).
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install documentation dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Generate docs from READMEs
+        run: python scripts/generate_docs_pages.py
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+
+      - name: Build MkDocs site (strict)
+        run: mkdocs build --strict

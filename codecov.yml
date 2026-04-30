@@ -1,0 +1,30 @@
+# Codecov configuration for aem-http-foundation
+# https://docs.codecov.com/docs/codecov-yaml
+
+# Ignore patterns: exclude test code and package-info from coverage metrics.
+ignore:
+  - "**/package-info.java"
+  - "**/src/test/**"
+  - "**/*Test.java"
+  - "**/*Tests.java"
+
+# Coverage targets and thresholds
+#
+# Note: Codecov counts lines with partial branch coverage as misses, whereas
+# JaCoCo's LINE counter counts them as covered.
+coverage:
+  status:
+    project:
+      default:
+        target: 70%       # Codecov baseline (partial lines count as misses)
+        threshold: 2%     # Allow 2% drop without marking PR as failed
+    patch:
+      default:
+        target: 70%       # New code in PRs should be at least 70% covered
+        threshold: 5%
+
+# Comment on PRs with coverage summary and file-level changes
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false

@@ -30,8 +30,11 @@ class AccessTokenTest {
         final AccessToken a = new AccessToken("x", 100L);
         final AccessToken b = new AccessToken("x", 100L);
         final AccessToken c = new AccessToken("x", 200L);
+        // same expiresInSeconds, different token string → Objects.equals returns false
+        final AccessToken d = new AccessToken("y", 100L);
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
         assertNotEquals(a, c);
+        assertNotEquals(a, d);
     }
 }
