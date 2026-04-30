@@ -1,0 +1,24 @@
+# Codecov configuration for aem-http-foundation
+# https://docs.codecov.com/docs/codecov-yaml
+
+# Ignore patterns: exclude package-info (javadoc-only) from coverage metrics.
+ignore:
+  - "**/package-info.java"
+
+# Coverage targets and thresholds
+coverage:
+  status:
+    project:
+      default:
+        target: 75%       # Aim for 75% project-wide coverage
+        threshold: 2%     # Allow 2% drop without marking PR as failed
+    patch:
+      default:
+        target: 70%       # New code in PRs should be at least 70% covered
+        threshold: 5%
+
+# Comment on PRs with coverage summary and file-level changes
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
