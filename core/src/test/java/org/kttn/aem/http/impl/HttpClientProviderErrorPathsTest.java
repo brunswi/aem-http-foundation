@@ -12,10 +12,12 @@ import org.junit.jupiter.api.Test;
 import org.kttn.aem.http.HttpClientProvider;
 import org.kttn.aem.http.HttpConfigService;
 import org.kttn.aem.http.support.AemMockOsgiSupport;
+import org.osgi.framework.Constants;
 
 import javax.net.ssl.X509TrustManager;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -153,6 +155,31 @@ class HttpClientProviderErrorPathsTest {
         // 2. checkServerTrusted tries AEM first
         // 3. On CertificateException, falls back to JVM default
         // 4. If JVM also rejects, exception propagates to caller
+    }
+
+    /**
+     * Verifies that when {@link KeyStoreService#getTrustManager} returns a valid
+     * {@link X509TrustManager}, {@code createConnectionManager} enters the SSL branch and builds
+     * a custom {@link org.apache.http.conn.ssl.SSLConnectionSocketFactory}-backed connection
+     * manager. This covers the {@code if (trustManager != null)} branch (lines 295–312 of
+     * {@link HttpClientProviderImpl#createConnectionManager}) that is otherwise unreachable because
+     * the default test {@link KeyStoreService} stub throws {@link KeyStoreNotInitialisedException}.
+     */
+    @Test
+    void shouldBuildSslConnectionManagerWhenTrustManagerIsAvailable() {
+        X509TrustManager aemTrustManager = mock(X509TrustManager.class);
+        KeyStoreService workingKeyStoreService = mock(KeyStoreService.class);
+        when(workingKeyStoreService.getTrustManager(any(ResourceResolver.class)))
+            .thenReturn(aemTrustManager);
+
+        context.registerService(KeyStoreService.class, workingKeyStoreService,
+            Map.of(Constants.SERVICE_RANKING, Integer.MAX_VALUE));
+
+        HttpClientProviderImpl providerImpl = new HttpClientProviderImpl();
+        httpClientProvider = context.registerInjectActivateService(providerImpl);
+
+        CloseableHttpClient client = httpClientProvider.provide("ssl-connection-manager-test");
+        assertNotNull(client, "Client should be built with a custom SSL connection manager");
     }
 
     @Test
