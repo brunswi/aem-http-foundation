@@ -1,9 +1,12 @@
 # Codecov configuration for aem-http-foundation
 # https://docs.codecov.com/docs/codecov-yaml
 
-# Ignore patterns: exclude package-info (javadoc-only) from coverage metrics.
+# Ignore patterns: exclude test code and package-info from coverage metrics.
 ignore:
   - "**/package-info.java"
+  - "**/src/test/**"
+  - "**/*Test.java"
+  - "**/*Tests.java"
 
 # Coverage targets and thresholds
 coverage:
