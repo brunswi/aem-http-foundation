@@ -131,4 +131,104 @@ class CachingTokenAcquirerTest {
         newAcquirer("cid", "csec", "openid", extras).getAccessToken();
         verify(httpClient, times(1)).execute(any(HttpPost.class));
     }
+
+    /**
+     * Verifies that {@link CachingTokenAcquirer#invalidateCacheForTest()} discards the cached token
+     * so that the next {@code getAccessToken()} call performs a fresh HTTP request rather than
+     * returning the previously cached value.
+     */
+    @Test
+    void invalidateCacheForcesFreshTokenRequest() throws IOException {
+        final CloseableHttpResponse first =
+            okResponse("{\"access_token\":\"t1\",\"expires_in\":3600}");
+        final CloseableHttpResponse second =
+            okResponse("{\"access_token\":\"t2\",\"expires_in\":3600}");
+        when(httpClient.execute(any(HttpPost.class))).thenReturn(first, second);
+
+        final CachingTokenAcquirer acquirer =
+            newAcquirer("cid", "csec", "", Collections.emptyMap());
+
+        assertEquals("t1", acquirer.getAccessToken().getAccessToken());
+        acquirer.invalidateCacheForTest();
+        assertEquals("t2", acquirer.getAccessToken().getAccessToken());
+        verify(httpClient, times(2)).execute(any(HttpPost.class));
+    }
+
+    /**
+     * Verifies that an {@code expires_in} of zero causes {@code localExpiry} to be set to
+     * {@code Instant.EPOCH}, which is always in the past, so every subsequent call triggers
+     * a fresh token request rather than serving a cached value.
+     */
+    @Test
+    void immediatelyRenewsWhenExpiresInIsZero() throws IOException {
+        final CloseableHttpResponse first =
+            okResponse("{\"access_token\":\"t1\",\"expires_in\":0}");
+        final CloseableHttpResponse second =
+            okResponse("{\"access_token\":\"t2\",\"expires_in\":3600}");
+        when(httpClient.execute(any(HttpPost.class))).thenReturn(first, second);
+
+        final CachingTokenAcquirer acquirer =
+            newAcquirer("cid", "csec", "", Collections.emptyMap());
+
+        assertEquals("t1", acquirer.getAccessToken().getAccessToken());
+        assertEquals("t2", acquirer.getAccessToken().getAccessToken());
+        verify(httpClient, times(2)).execute(any(HttpPost.class));
+    }
+
+    /**
+     * Verifies that an {@code expires_in} value exceeding the one-year maximum is silently capped
+     * and a token is still returned successfully, preventing arithmetic overflow or unreasonably
+     * long cache lifetimes from a misbehaving issuer.
+     */
+    @Test
+    void capsExpiresInWhenAboveYearMaximum() throws IOException {
+        final long overMax = 365L * 24 * 60 * 60 + 1;
+        final CloseableHttpResponse response =
+            okResponse("{\"access_token\":\"t\",\"expires_in\":" + overMax + "}");
+        when(httpClient.execute(any(HttpPost.class))).thenReturn(response);
+
+        final AccessToken token =
+            newAcquirer("cid", "csec", "", Collections.emptyMap()).getAccessToken();
+        assertEquals("t", token.getAccessToken());
+    }
+
+    /**
+     * Verifies that a {@code null} scopes argument does not cause a NullPointerException and
+     * simply omits the {@code scope} parameter from the token POST, since some OAuth endpoints
+     * do not require a scope.
+     */
+    @Test
+    void omitsScopeParamWhenScopesIsNull() throws IOException {
+        final CloseableHttpResponse response =
+            okResponse("{\"access_token\":\"t\",\"expires_in\":3600}");
+        when(httpClient.execute(any(HttpPost.class))).thenReturn(response);
+
+        newAcquirer("cid", "csec", null, Collections.emptyMap()).getAccessToken();
+        verify(httpClient, times(1)).execute(any(HttpPost.class));
+    }
+
+    /**
+     * Verifies that {@code null} additional token params are handled gracefully without a
+     * NullPointerException, and that a token is still acquired successfully.
+     */
+    @Test
+    void handlesNullAdditionalTokenParams() throws IOException {
+        final CloseableHttpResponse response =
+            okResponse("{\"access_token\":\"t\",\"expires_in\":3600}");
+        when(httpClient.execute(any(HttpPost.class))).thenReturn(response);
+
+        newAcquirer("cid", "csec", "openid", null).getAccessToken();
+        verify(httpClient, times(1)).execute(any(HttpPost.class));
+    }
+
+    /**
+     * Verifies that a {@code null} client ID is treated as missing credentials: no HTTP request
+     * is made and {@link TokenUnavailableException} is thrown immediately.
+     */
+    @Test
+    void throwsWhenClientIdIsNull() {
+        final TokenUnavailableException ex = assertThrows(TokenUnavailableException.class,
+            () -> newAcquirer(null, "csec", "", Collections.emptyMap()).getAccessToken());
+        assertTrue(ex.getMessage().contains("No OAuth credentials configured"));
+    }
 }
