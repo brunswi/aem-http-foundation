@@ -25,6 +25,7 @@
     <artifactId>aem-http-foundation.core</artifactId>
     <name>AEM HTTP Foundation - Core</name>
     <description>Core bundle for AEM HTTP Foundation</description>
+    <url>https://aem.kttn.org/aem-http-foundation/</url>
     <build>
         <plugins>
             <plugin>
