@@ -6,7 +6,7 @@ theme:
   name: material
   custom_dir: overrides
   logo: assets/logo.svg
-  favicon: assets/favicon.ico
+  favicon: assets/logo.svg
   # Material loads these from Google Fonts; avoid duplicating via @import in extra.css.
   font:
     text: Work Sans
@@ -22,8 +22,11 @@ extra:
 
 extra_css:
   - stylesheets/extra.css
+hooks:
+  - scripts/hooks/hooks.py
 plugins:
   - search
+  - privacy
 nav:
   - Home: index.md
   - Integration: integration.md
