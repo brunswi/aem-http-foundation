@@ -8,7 +8,7 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: assets/logo.svg
-  favicon: assets/logo.svg
+  favicon: assets/favicon.ico
   # Material loads these from Google Fonts; avoid duplicating via @import in extra.css.
   font:
     text: Work Sans

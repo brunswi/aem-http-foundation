@@ -91,6 +91,18 @@
   flex-shrink: 0;
 }
 
+.md-header__button.md-logo :is(img, svg) {
+  height: 1.75rem;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.md-header__button.md-logo {
+  margin: 0;
+  padding: 0;
+}
+
 /*
  * Header LGBTQIA+ icon styling
  * Material: `.md-icon svg { fill: currentColor }` — monochromes the icon. Some stripes in

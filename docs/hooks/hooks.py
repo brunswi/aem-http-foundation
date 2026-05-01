@@ -1,10 +1,26 @@
-import os
 import glob
+import os
+import re
+
+_FAVICON_RE = re.compile(r'<link rel="icon" href="([^"]*)">')
+
+
+def _expand_favicon(m: re.Match) -> str:
+    # Derive the relative base path from the matched href (e.g. '' or '../').
+    href = m.group(1)
+    base = href[: href.index("assets/")]
+    return (
+        f'<link rel="icon" href="{base}assets/favicon.svg" type="image/svg+xml">\n'
+        f'      <link rel="icon" href="{base}assets/favicon.png" sizes="48x48">\n'
+        f'      <link rel="icon" href="{base}assets/favicon.ico">'
+    )
 
 
 def on_post_page(output, **kwargs):
     # MkDocs Material hardcodes display=fallback; swap renders text immediately (better LCP).
-    return output.replace("display=fallback", "display=swap")
+    output = output.replace("display=fallback", "display=swap")
+    # Replace Material's single favicon link with SVG → PNG → ICO fallback chain.
+    return _FAVICON_RE.sub(_expand_favicon, output)
 
 
 def on_post_build(config, **kwargs):
