@@ -248,5 +248,5 @@ This is the right path when you want generic OAuth `client_credentials` without 
 
 ## Next steps
 
-- [EXAMPLES.md](EXAMPLES.md) — recommended usage patterns and troubleshooting
-- [core/REFERENCE.md](core/REFERENCE.md) — architecture, public API, and OSGi configuration reference
+- [Examples](EXAMPLES.md) — recommended usage patterns and troubleshooting
+- [Technical Reference](core/REFERENCE.md) — architecture, public API, and OSGi configuration reference

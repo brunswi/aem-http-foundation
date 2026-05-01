@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+
+  {#- Resolve title and description, preferring per-page frontmatter over site defaults -#}
+  {% set _title = config.site_name %}
+  {% if page and page.title and page.title != config.site_name %}
+    {% set _title = page.title ~ " - " ~ config.site_name %}
+  {% endif %}
+  {% if page and page.meta and page.meta.title %}
+    {% set _title = page.meta.title ~ " - " ~ config.site_name %}
+  {% endif %}
+
+  {% set _desc = config.site_description | default("") %}
+  {% if page and page.meta and page.meta.description %}
+    {% set _desc = page.meta.description %}
+  {% endif %}
+
+  {#- Open Graph -#}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ _title }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  {% if _desc %}
+    <meta property="og:description" content="{{ _desc }}">
+  {% endif %}
+
+  {#- Twitter Card -#}
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{ _title }}">
+  {% if _desc %}
+    <meta name="twitter:description" content="{{ _desc }}">
+  {% endif %}
+{% endblock %}

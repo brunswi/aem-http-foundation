@@ -536,4 +536,4 @@ A common real-world cause is HTTP `400 invalid_client`, which usually means the 
 ## Next steps
 
 - [Integration](INTEGRATION.md) — choosing the right integration path
-- [core/REFERENCE.md](core/REFERENCE.md) — architecture and configuration reference
+- [Technical Reference](core/REFERENCE.md) — architecture and configuration reference

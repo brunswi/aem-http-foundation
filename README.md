@@ -19,7 +19,7 @@ Use it when your AEM project calls internal, external, or Adobe APIs and you do 
 
 ---
 
-## Why not just use raw Apache HttpClient?
+## Why not just use raw Apache HttpClient
 
 You can — but most AEM projects then end up re-implementing:
 
@@ -117,11 +117,11 @@ public class HealthcheckServiceImpl implements HealthcheckService {
 
 ## Documentation
 
-| Document                      | Purpose                                                            |
-|-------------------------------|--------------------------------------------------------------------|
-| [Integration](INTEGRATION.md) | Setup, deployment, verification, and recommended integration paths |
-| [Usage Examples](EXAMPLES.md) | End-to-end examples and troubleshooting                            |
-| [Details](core/REFERENCE.md)     | Architecture, public API, configuration model, and compatibility   |
+| Document                                 | Purpose                                                            |
+|------------------------------------------|--------------------------------------------------------------------|
+| [Integration](INTEGRATION.md)            | Setup, Deployment, Verification, and Recommended Integration Paths |
+| [Examples](EXAMPLES.md)                  | Recommended Usage Patterns and Troubleshooting                     |
+| [Technical Reference](core/REFERENCE.md) | Architecture, Public API, and Configuration Reference              |
 
 ---
 

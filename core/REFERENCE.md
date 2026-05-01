@@ -442,6 +442,5 @@ To keep the foundation focused, the following are intentionally out of scope:
 
 ## See also
 
-| Document                         | Purpose                                                                         |
-|----------------------------------|---------------------------------------------------------------------------------|
-| [Integration](../INTEGRATION.md) | How to add the foundation to your project and choose the right integration path |
+- [Integration](../INTEGRATION.md) — choosing the right integration path
+- [Examples](../EXAMPLES.md) — concrete usage patterns for common scenarios
