@@ -131,7 +131,7 @@ def page_specs(base: str) -> list[PageSpec]:
                 "../EXAMPLES.md": "examples.md",
                 "../INTEGRATION.md": "integration.md",
             },
-            raw=[("](src/", f"]({base}/core/src/)")],
+            raw=[("](src/", f"]({base}/core/src/")],
         ),
         PageSpec(
             source="INTEGRATION.md",

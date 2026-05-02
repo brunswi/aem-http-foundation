@@ -10,11 +10,10 @@ For API reference and OSGi configuration details, see [core/REFERENCE.md](core/R
 
 ## About 90 seconds to first use
 
-The most common path is still the simplest one:
+The most common path is the simplest one:
 
 - inject `HttpClientProvider`
-- create or retrieve one pooled client for your logical key
-- execute requests with it
+- get a pooled client and execute requests with it
 - add auth only if the target API needs it
 
 Start with **Example 1** unless you already know you need OAuth or Adobe headers.
@@ -67,8 +66,7 @@ public class PublicApiServiceImpl implements PublicApiService {
 
 ### What this demonstrates
 
-- you can obtain a pooled client from the foundation
-- the client lifecycle is managed for you
+- the string key identifies the integration context; the foundation caches and reuses the pooled client for the same key
 - a simple outbound call works without additional auth wiring
 
 ---
@@ -158,20 +156,10 @@ public class AdobeIoRuntimeServiceImpl implements AdobeIoRuntimeService {
 
 ### What this demonstrates
 
-- bearer token injection on each request
-- optional `x-api-key` header
-- optional `x-gw-ims-org-id` header
-- token caching and refresh before expiry
-- one place to reason about the Adobe credential and header policy
-
-### What success looks like
-
-If this works, the foundation is successfully doing the recurring Adobe S2S wiring for you before the request is sent:
-
-- obtaining and caching the token
-- applying bearer auth
-- applying the configured Adobe headers
-- reusing a pooled outbound client
+- bearer token acquired, cached, and injected on each request
+- optional `x-api-key` and `x-gw-ims-org-id` headers applied when configured
+- pooled outbound client reuse
+- one integration context owns the credential and header policy
 
 > If you only need bearer auth and do not want Adobe headers, use the generic OAuth supplier path instead.
 
@@ -299,8 +287,6 @@ public class SlowExportServiceImpl implements SlowExportService {
 ### What this demonstrates
 
 You can keep one shared HTTP default while still giving a specific integration its own timeout profile when needed.
-
-That is usually better than globally loosening timeouts for every outbound call.
 
 ---
 
@@ -454,18 +440,7 @@ This example shows the real point of shared credentials:
 - **two** separate pooled clients
 - **two** separate integration contexts in consuming code
 
-So the credential is shared, but the integration contexts are still explicit and independently referenceable.
-
-### Why this is useful
-
-Without the shared credential configuration, both Adobe integrations would need to repeat:
-
-- token endpoint
-- client id
-- client secret
-- scopes
-
-With shared credentials, those move into one place, while each integration still controls its own request behavior.
+Both integrations draw from the same OAuth credential configuration, while each remains an independent integration context.
 
 > Shared credentials are supported, but they are not the recommended default for every Adobe integration.
 

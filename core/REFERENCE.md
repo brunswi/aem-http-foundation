@@ -36,64 +36,25 @@ It is designed to centralize the repeating transport and auth-related mechanics 
 
 ---
 
-## Decision guide
+## Overview
 
-| Goal                                                           | Use                                                                               |
-|----------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| Plain pooled `CloseableHttpClient` for any outbound call       | `HttpClientProvider`                                                              |
-| Adobe API integration with OAuth + Adobe gateway headers       | `AdobeIntegrationConfiguration`                                                   |
-| Multiple integrations intentionally sharing one credential set | `OAuthClientCredentialsTokenSupplier` + bearer customization                      |
-| Generic OAuth `client_credentials` against any RFC 6749 issuer | `OAuthClientCredentialsTokenSupplier` + bearer customization                      |
-| Custom auth scheme                                             | implement `HttpClientCustomizer` and pass it to `HttpClientProvider.provide(...)` |
-
-### Adobe I/O, Experience Platform, and `AdobeIntegrationConfiguration`
-
-In this bundle, “Adobe integration” refers to a recurring **client-side transport and auth pattern** often used by Adobe server-to-server APIs:
-
-- IMS / OAuth `client_credentials`
-- bearer token injection
-- optional `x-api-key`
-- optional `x-gw-ims-org-id`
-
-That pattern may apply to multiple Adobe destinations, including Adobe I/O Runtime and Experience Platform. What changes between those APIs are typically:
-
-- hostnames
-- paths
-- scopes
-- product permissions
-
-What stays the same is the client-side integration pattern standardized here.
+| Goal                                                           | Use                                                                                                        |
+|----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| Plain pooled `CloseableHttpClient` for any outbound call       | [`HttpClientProvider`](#httpclientprovider)                                                                |
+| Adobe API integration with OAuth + Adobe gateway headers       | [`AdobeIntegrationConfiguration`](#adobeintegrationconfiguration)                                          |
+| Multiple integrations intentionally sharing one credential set | [`OAuthClientCredentialsTokenSupplier`](#oauthclientcredentialstokensupplier) + bearer customization       |
+| Generic OAuth `client_credentials` against any RFC 6749 issuer | [`OAuthClientCredentialsTokenSupplier`](#oauthclientcredentialstokensupplier) + bearer customization       |
+| Custom auth scheme                                             | implement [`HttpClientCustomizer`](#httpclientcustomizer) and pass it to `HttpClientProvider.provide(...)` |
 
 ---
 
 ## Configuration model
 
-The foundation distinguishes between three configuration layers:
+The foundation uses three configuration layers:
 
-### 1. Shared HTTP defaults
-Global transport behavior such as:
-
-- connection timeout
-- socket timeout
-- pool sizing
-- retry behavior
-
-These are exposed through `HttpConfigService` as an immutable `HttpConfig`.
-
-### 2. Optional shared OAuth credentials
-Reusable OAuth `client_credentials` suppliers for cases where multiple integrations intentionally share one credential set.
-
-This is an advanced option, not the default path for every integration.
-
-### 3. Integration-specific request policies
-Per-integration behavior such as:
-
-- bearer token injection
-- Adobe-specific header handling
-- trust-store usage
-- per-integration client customization
-
-For Adobe server-to-server scenarios, this is typically represented by `AdobeIntegrationConfiguration`.
+- **Shared HTTP defaults** — `HttpConfigService` / `HttpConfig`: timeouts, pool sizing, retry behavior
+- **Optional shared OAuth credentials** — `OAuthClientCredentialsTokenSupplier`: reusable credential sets shared across multiple integrations; advanced, not the default path
+- **Integration-specific request policies** — `AdobeIntegrationConfiguration`: bearer token injection, Adobe headers, per-integration client customization
 
 ---
 
@@ -137,27 +98,9 @@ Outbound HTTP calls are keyed and pooled:
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Supporting internals
-
-These types help explain runtime behavior but are not the main consumer-facing API:
-
-- **`HttpClientProviderEntry`**
-    - pairs a client with its connection manager for ordered shutdown
-
-- **retry strategy**
-    - extends the default Apache HttpClient behavior with foundation-specific retry handling
-    - treats token-acquisition failures as non-retriable transport failures
-
-- **service-unavailable retry strategy**
-    - wraps default behavior with logging and a fast path for successful responses
-
----
-
 ## Public contract vs internal implementation
 
-The following types are intended for direct consumer use:
-
-#### Public API
+#### Singleton services - inject via `@Reference`
 
 - [`HttpClientProvider`](src/main/java/org/kttn/aem/http/HttpClientProvider.java)
 - [`HttpConfigService`](src/main/java/org/kttn/aem/http/HttpConfigService.java)
@@ -166,13 +109,12 @@ The following types are intended for direct consumer use:
 - [`AccessToken`](src/main/java/org/kttn/aem/http/auth/oauth/AccessToken.java)
 - [`HttpConfig`](src/main/java/org/kttn/aem/http/HttpConfig.java)
 
-#### Integration types
+#### Factory components - one config file per integration context
 
 - [`AdobeIntegrationConfiguration`](src/main/java/org/kttn/aem/http/auth/adobe/impl/AdobeIntegrationConfiguration.java)
 - [`OAuthClientCredentialsTokenSupplier`](src/main/java/org/kttn/aem/http/auth/oauth/impl/OAuthClientCredentialsTokenSupplier.java)
 
 #### Internal implementation
-Examples of internal implementation detail include:
 
 - [`HttpClientProviderImpl`](src/main/java/org/kttn/aem/http/impl/HttpClientProviderImpl.java)
 - [`HttpConfigServiceImpl`](src/main/java/org/kttn/aem/http/impl/HttpConfigServiceImpl.java)
@@ -241,12 +183,13 @@ CloseableHttpClient client = httpClientProvider.provide(
 
 ### `HttpConfigService`
 
-Provides the current effective `HttpConfig` derived from OSGi configuration.
+Provides the effective `HttpConfig` derived from OSGi configuration.
 
 Use this when:
 
-- you want to inspect foundation defaults
 - you need to derive a per-integration override
+- you want to inspect foundation defaults
+
 
 ### `HttpClientCustomizer`
 
@@ -303,27 +246,11 @@ All time-valued fields are expressed in **milliseconds**.
 
 #### Per-integration override
 
-See [EXAMPLES.md → Example 6](../EXAMPLES.md#example-4-custom-timeouts-per-integration-intermediate) for the full pattern.
+See [EXAMPLES.md → Example 6](../EXAMPLES.md#example-4-custom-timeouts-per-integration-intermediate) for the pattern.
 
 ---
 
-## Key implementations
-
-### `HttpClientProviderImpl`
-
-Foundation-managed implementation of pooled client creation and reuse.
-
-Responsibilities include:
-
-- logical-keyed client cache
-- Apache `PoolingHttpClientConnectionManager`
-- retry setup
-- TLS / trust-manager integration
-- ordered shutdown on bundle deactivation
-
-### `HttpConfigServiceImpl`
-
-Maps OSGi metatype configuration into `HttpConfig`.
+## Authentication components
 
 ### `AdobeIntegrationConfiguration`
 
@@ -341,8 +268,8 @@ Factory component for Adobe server-to-server integration contexts.
 | Property                  | Required |                                       Default | Meaning                                                                                                                                                                                      |
 |---------------------------|:--------:|----------------------------------------------:|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `credential.id`           |    no    |                                     *(empty)* | When set, bearer tokens come from the shared `OAuthClientCredentialsTokenSupplier` with the same `credential.id`; inline token fields below are ignored for acquisition.                     |
-| `clientId`                |   yes†   |                                     *(empty)* | OAuth client ID; required for inline mode. With `credential.id` set, optional: overrides `x-api-key` only; if omitted there, the value is read from the shared supplier `clientId` property. |
-| `clientSecret`            |   yes†   |                                     *(empty)* | OAuth client secret; required when `credential.id` is empty; ignored when shared credentials are used.                                                                                       |
+| `clientId`                |   yes*   |                                     *(empty)* | OAuth client ID; required for inline mode. With `credential.id` set, optional: overrides `x-api-key` only; if omitted there, the value is read from the shared supplier `clientId` property. |
+| `clientSecret`            |   yes*   |                                     *(empty)* | OAuth client secret; required when `credential.id` is empty; ignored when shared credentials are used.                                                                                       |
 | `scopes`                  |    no    |                                     *(empty)* | Comma-separated OAuth scopes (inline mode only).                                                                                                                                             |
 | `set.api.key.header`      |    no    |                                        `true` | When true, sends `x-api-key` using `clientId` or, in shared mode, the shared supplier `clientId` property if local `clientId` is blank.                                                      |
 | `org.id.header.value`     |    no    |                                     *(empty)* | Value for the `x-gw-ims-org-id` header on API requests (not sent to the token endpoint).                                                                                                     |
@@ -350,7 +277,7 @@ Factory component for Adobe server-to-server integration contexts.
 | `additional.token.params` |    no    |                                     *(empty)* | Advanced: extra token POST form fields as `name=value` entries (inline mode only).                                                                                                           |
 | `additional.headers`      |    no    |                                     *(empty)* | Advanced: extra static request headers as `name=value` entries.                                                                                                                              |
 
-† `clientId` and `clientSecret` are required when `credential.id` is empty.
+* required when `credential.id` is empty.
 
 Responsibilities include:
 
@@ -430,13 +357,13 @@ To keep the foundation focused, the following are intentionally out of scope:
 
 ## Usage examples
 
-| Example | Level | When to use it |
-|---|---|---|
-| [Example 1 — Public REST API](../EXAMPLES.md#example-1-public-rest-api-basic) | **Basic** | Plain pooled outbound HTTP with no special authentication; recommended first smoke test after deployment. |
-| [Example 2 — Adobe integration](../EXAMPLES.md#example-2-adobe-integration-recommended) | **Recommended** | Recommended default for Adobe server-to-server APIs (IMS OAuth `client_credentials`, optional Adobe headers). |
-| [Example 3 — Custom Basic Auth](../EXAMPLES.md#example-3-custom-basic-auth-intermediate) | **Intermediate** | Non-OAuth endpoints that use Basic authentication, while still reusing the foundation's pooled client lifecycle. |
-| [Example 4 — Custom timeouts per integration](../EXAMPLES.md#example-4-custom-timeouts-per-integration-intermediate) | **Intermediate** | One integration needs different timeouts than the shared defaults, without loosening them globally. |
-| [Example 5 — Shared credentials across multiple integrations](../EXAMPLES.md#example-5-shared-credentials-across-multiple-integrations-advanced) | **Advanced** | Multiple Adobe integrations intentionally share one OAuth credential set but keep separate integration contexts. |
+| Example                                                                                                                                          | Level            | When to use it                                                                                                   |
+|--------------------------------------------------------------------------------------------------------------------------------------------------|------------------|------------------------------------------------------------------------------------------------------------------|
+| [Example 1 — Public REST API](../EXAMPLES.md#example-1-public-rest-api-basic)                                                                    | **Basic**        | Plain pooled outbound HTTP with no special authentication; recommended first smoke test after deployment.        |
+| [Example 2 — Adobe integration](../EXAMPLES.md#example-2-adobe-integration-recommended)                                                          | **Recommended**  | Recommended default for Adobe server-to-server APIs (IMS OAuth `client_credentials`, optional Adobe headers).    |
+| [Example 3 — Custom Basic Auth](../EXAMPLES.md#example-3-custom-basic-auth-intermediate)                                                         | **Intermediate** | Non-OAuth endpoints that use Basic authentication, while still reusing the foundation's pooled client lifecycle. |
+| [Example 4 — Custom timeouts per integration](../EXAMPLES.md#example-4-custom-timeouts-per-integration-intermediate)                             | **Intermediate** | One integration needs different timeouts than the shared defaults, without loosening them globally.              |
+| [Example 5 — Shared credentials across multiple integrations](../EXAMPLES.md#example-5-shared-credentials-across-multiple-integrations-advanced) | **Advanced**     | Multiple Adobe integrations intentionally share one OAuth credential set but keep separate integration contexts. |
 
 ---
 
