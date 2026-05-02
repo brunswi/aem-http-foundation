@@ -131,7 +131,18 @@ Ensure the Granite trust store exists and is properly initialized in the target 
 ### Configure service user
 
 The foundation’s `HttpClientProvider` requests a service resource resolver for the `truststore-reader` subservice. You must map that subservice to a repository identity that can read the Granite trust store (`/etc/truststore`).
-An out-of-the-box `truststore-reader-service` system user already exists. Point the foundation bundle at that principal:
+
+An out-of-the-box `truststore-reader-service` system user already exists in AEM as a Cloud Service. Point the foundation bundle at that principal by creating an amended service user mapping OSGi factory configuration.
+
+Create the file at:
+
+```text
+ui.config/src/main/content/jcr_root/apps/<your-app>/osgiconfig/config/
+  org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended~aem-http-foundation.cfg.json
+```
+
+with the following content:
+
 ```json
 {
   "service.ranking": 0,
