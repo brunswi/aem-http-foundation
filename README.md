@@ -14,7 +14,7 @@ Use it when your AEM project calls internal, external, or Adobe APIs and you do 
 -->
 [![Maven Central](https://img.shields.io/maven-central/v/org.kttn.aem/aem-http-foundation.core?style=flat-square&logo=apachemaven&logoColor=fdf0ed&label=Maven%20Central&color=9bc68d&labelColor=555555)](https://central.sonatype.com/artifact/org.kttn.aem/aem-http-foundation.core)
 [![Coverage](https://img.shields.io/codecov/c/github/brunswi/aem-http-foundation?style=flat-square&logo=codecov&logoColor=fdf0ed&label=Coverage&color=9bc68d&labelColor=555555)](https://app.codecov.io/github/brunswi/aem-http-foundation)
-[![Security](https://img.shields.io/badge/Security-CodeQL-9bc68d?style=flat-square&logo=github&logoColor=fdf0ed&labelColor=555555)](https://github.com/brunswi/aem-http-foundation/security/code-scanning)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/brunswi/aem-http-foundation/codeql.yml?style=flat-square&logo=github&logoColor=fdf0ed&label=CodeQL&color=9bc68d&labelColor=555555)](https://github.com/brunswi/aem-http-foundation/actions/workflows/codeql.yml)
 
 ---
 
