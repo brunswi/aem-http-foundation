@@ -485,10 +485,13 @@ Granite trust store integration unavailable: service user 'truststore-reader' no
 
 **What to check:**
 
-- service user mapping
-- repository init ACLs
-- the bundle symbolic name used in the service user mapping
-- DEBUG logging on `org.kttn.aem.http.impl.HttpClientProviderImpl`
+**1. Enable DEBUG logging to see the root cause.**
+
+Add a Sling Logger configuration for `org.kttn.aem.http.impl.HttpClientProviderImpl` at DEBUG level. The actual `LoginException` message will tell you exactly what is wrong.
+
+**2. Verify the OSGi config is active.**
+
+In the AEM Developer Console → OSGi → Configurations, search for `ServiceUserMapperImpl.amended`. Confirm your amended instance is listed and that `user.mapping` contains the expected entry.
 
 ---
 

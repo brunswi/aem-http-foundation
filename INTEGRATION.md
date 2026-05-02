@@ -147,7 +147,7 @@ with the following content:
 {
   "service.ranking": 0,
   "user.mapping": [
-    "org.kttn.aem.aem-http-foundation.core:truststore-reader=[truststore-reader-service]"
+    "aem-http-foundation.core:truststore-reader=[truststore-reader-service]"
   ]
 }
 ```

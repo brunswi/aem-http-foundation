@@ -27,6 +27,7 @@ import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.osgi.framework.Constants;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
@@ -85,6 +86,8 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
      * {@link Deactivate}. Not static — each component activation owns its own map.
      */
     private final ConcurrentMap<String, HttpClientProviderEntry> entries = new ConcurrentHashMap<>();
+
+    private TrustManager trustManager;
 
     @Reference
     private HttpConfigService httpConfigService;
@@ -161,6 +164,9 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                 try {
                     aemTrustManager.checkServerTrusted(chain, authType);
                 } catch (CertificateException e) {
+                    defaultTrustManager.checkServerTrusted(chain, authType);
+                } catch (RuntimeException e) {
+                    log.debug("AEM trust manager raised an unexpected error. Falling back to JVM default trust store.", e);
                     defaultTrustManager.checkServerTrusted(chain, authType);
                 }
             }
@@ -256,6 +262,11 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
         return entry.getHttpClient();
     }
 
+    @Activate
+    private void activate() {
+        this.trustManager = createTrustManager();
+    }
+
     /**
      * Shuts down every pooled connection manager and closes cached clients when the component
      * is deactivated (bundle stop or configuration removal).
@@ -291,8 +302,7 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     public HttpClientConnectionManager createConnectionManager(
         @NonNull final HttpConfig httpConfig) {
         PoolingHttpClientConnectionManager connectionManager = null;
-        final TrustManager trustManager = createTrustManager();
-        if (trustManager != null) {
+        if (this.trustManager != null) {
             try {
                 final SSLContext sslContext = SSLContext.getInstance("TLS");
                 sslContext.init(null, new TrustManager[]{trustManager}, null);
@@ -340,7 +350,11 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
             final X509TrustManager finalAemTM = (X509TrustManager) keyStoreService.getTrustManager(
                 resourceResolver);
 
-            trustManager = getTrustManager(finalDefaultTm, finalAemTM);
+            if (finalAemTM.getAcceptedIssuers().length == 0) {
+                log.info("Granite trust store integration unavailable: trust store is empty. Falling back to JVM default trust store.");
+            } else {
+                trustManager = getTrustManager(finalDefaultTm, finalAemTM);
+            }
         } catch (final LoginException e) {
             log.info("Granite trust store integration unavailable: service user '{}' not configured. Falling back to JVM default trust store.", SERVICE_USER);
             log.debug("Service user login failed:", e);
