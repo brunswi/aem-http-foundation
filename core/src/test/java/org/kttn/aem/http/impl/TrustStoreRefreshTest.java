@@ -4,6 +4,7 @@ import com.adobe.granite.keystore.KeyStoreService;
 import io.wcm.testing.mock.aem.junit5.AemContext;
 import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.kttn.aem.http.support.AemMockOsgiSupport;
@@ -11,14 +12,16 @@ import org.osgi.framework.Constants;
 
 import javax.net.ssl.X509TrustManager;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.when;
 
 /**
@@ -124,6 +127,82 @@ class TrustStoreRefreshTest {
             "Each refresh must produce a fresh delegate");
     }
 
+    // --- onChange coverage ---
+
+    /**
+     * {@code onChange} on a provider with no cached clients must complete without throwing.
+     * This happens when the trust store changes before any consumer has called {@code provide()}.
+     */
+    @Test
+    void onChangeOnEmptyEntriesMapIsNoOp() {
+        assertDoesNotThrow(() -> provider.onChange(Collections.emptyList()),
+            "onChange before any client is provided must be a no-op");
+    }
+
+    /**
+     * Every cached key must get a fresh real client after {@code onChange} — not just the first
+     * one. Verifies the full forEach across the entries map.
+     */
+    @Test
+    void onChangeRebuildsAllCachedKeys() throws Exception {
+        final CloseableHttpClient w1 = provider.provide("key-one");
+        final CloseableHttpClient w2 = provider.provide("key-two");
+        final CloseableHttpClient w3 = provider.provide("key-three");
+
+        final CloseableHttpClient d1before = getDelegateFromWrapper(w1);
+        final CloseableHttpClient d2before = getDelegateFromWrapper(w2);
+        final CloseableHttpClient d3before = getDelegateFromWrapper(w3);
+
+        provider.onChange(Collections.emptyList());
+
+        assertNotSame(d1before, getDelegateFromWrapper(w1), "key-one delegate must be replaced");
+        assertNotSame(d2before, getDelegateFromWrapper(w2), "key-two delegate must be replaced");
+        assertNotSame(d3before, getDelegateFromWrapper(w3), "key-three delegate must be replaced");
+
+        assertSame(w1, provider.provide("key-one"), "key-one wrapper must be unchanged");
+        assertSame(w2, provider.provide("key-two"), "key-two wrapper must be unchanged");
+        assertSame(w3, provider.provide("key-three"), "key-three wrapper must be unchanged");
+    }
+
+    /**
+     * The builder mutator supplied at {@code provide()} time carries auth wiring (interceptors,
+     * credentials, Adobe headers). It must be re-applied on every {@code onChange} rebuild so
+     * that outbound requests do not lose their authentication after a trust-store refresh.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void onChangeReAppliesBuilderMutator() {
+        final Consumer<HttpClientBuilder> mutator = mock(Consumer.class);
+
+        provider.provide("mutator-key", null, mutator);
+        verify(mutator, times(1)).accept(any(HttpClientBuilder.class));
+
+        provider.onChange(Collections.emptyList());
+
+        verify(mutator, times(2)).accept(any(HttpClientBuilder.class));
+    }
+
+    // --- scheduler lifecycle ---
+
+    /**
+     * The deferred-close scheduler must be running while the component is active and must be
+     * shut down on {@code @Deactivate} so its thread does not linger after the bundle stops.
+     */
+    @Test
+    void deferredCloseSchedulerIsActiveWhileComponentIsActiveAndShutDownOnDeactivation()
+        throws Exception {
+        final ScheduledExecutorService scheduler = getDeferredCloseScheduler(provider);
+        assertFalse(scheduler.isShutdown(),
+            "Scheduler must be running when the component is active");
+
+        final Method cleanup = HttpClientProviderImpl.class.getDeclaredMethod("cleanup");
+        cleanup.setAccessible(true);
+        cleanup.invoke(provider);
+
+        assertTrue(scheduler.isShutdown(),
+            "Scheduler must be shut down after component deactivation");
+    }
+
     // --- reflection helpers ---
 
     private CloseableHttpClient getDelegateFromWrapper(final CloseableHttpClient client) throws Exception {
@@ -144,5 +223,12 @@ class TrustStoreRefreshTest {
         Field f = HttpClientProviderEntry.class.getDeclaredField("realClient");
         f.setAccessible(true);
         return (CloseableHttpClient) f.get(entry);
+    }
+
+    private ScheduledExecutorService getDeferredCloseScheduler(final HttpClientProviderImpl p)
+        throws Exception {
+        Field f = HttpClientProviderImpl.class.getDeclaredField("deferredCloseScheduler");
+        f.setAccessible(true);
+        return (ScheduledExecutorService) f.get(p);
     }
 }

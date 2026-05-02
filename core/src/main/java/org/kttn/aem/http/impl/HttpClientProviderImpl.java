@@ -52,6 +52,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
 /**
@@ -95,6 +97,14 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     private final ConcurrentMap<String, HttpClientProviderEntry> entries = new ConcurrentHashMap<>();
 
     private TrustManager trustManager;
+
+    /**
+     * Single-thread scheduler used to defer the hard shutdown of superseded connection pools
+     * after a trust-store refresh. Owned by this component: created in {@link #activate} and
+     * terminated in {@link #cleanup}. A single thread is sufficient because trust-store changes
+     * are rare and the tasks are lightweight (one {@code shutdown()} + one {@code close()}).
+     */
+    private ScheduledExecutorService deferredCloseScheduler;
 
     @Reference
     private HttpConfigService httpConfigService;
@@ -250,6 +260,13 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     @Activate
     private void activate() {
         this.trustManager = createTrustManager();
+        // Daemon thread so the scheduler does not prevent JVM shutdown if the bundle is stopped
+        // while a deferred-close task is still pending.
+        this.deferredCloseScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            final Thread t = new Thread(r, "aem-http-foundation-deferred-close");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     /**
@@ -268,18 +285,23 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                 entry.getBuilderMutator().accept(newBuilder);
             }
             newBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
-            entry.swapUnderlying(newBuilder.build(), newCm);
+            entry.swapUnderlying(newBuilder.build(), newCm, deferredCloseScheduler);
         });
     }
 
     /**
      * Shuts down every pooled connection manager and closes cached clients when the component
      * is deactivated (bundle stop or configuration removal).
+     * <p>
+     * {@code shutdownNow()} on the deferred-close scheduler cancels any pending grace-period
+     * tasks. The corresponding old connection managers will not be shut down by those tasks, but
+     * at deactivation time all resources are being released anyway, so the omission is harmless.
      */
     @Deactivate
     private void cleanup() {
         entries.values().stream().filter(Objects::nonNull).forEach(HttpClientProviderEntry::close);
         entries.clear();
+        deferredCloseScheduler.shutdownNow();
     }
 
     private HttpClientProviderEntry buildEntry(
