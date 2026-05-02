@@ -110,6 +110,7 @@ site/
 docs-internal
 .cache/
 .claude/
+memory/
 
 # OS / merge cruft
 **/.DS_Store
