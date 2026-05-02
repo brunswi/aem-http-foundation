@@ -28,6 +28,6 @@ jobs:
         with:
           languages: java
 
-      - run: mvn -B compile --file pom.xml
+      - run: mvn -B install -DskipTests --file pom.xml
 
       - uses: github/codeql-action/analyze@v3
