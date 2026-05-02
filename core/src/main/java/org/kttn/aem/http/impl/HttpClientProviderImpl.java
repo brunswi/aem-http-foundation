@@ -26,26 +26,28 @@ import org.apache.http.protocol.HttpContext;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.api.resource.observation.ResourceChange;
+import org.apache.sling.api.resource.observation.ResourceChangeListener;
+import org.kttn.aem.http.HttpClientProvider;
+import org.kttn.aem.http.HttpConfig;
+import org.kttn.aem.http.HttpConfigService;
 import org.osgi.framework.Constants;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
-import org.kttn.aem.http.HttpClientProvider;
-import org.kttn.aem.http.HttpConfig;
-import org.kttn.aem.http.HttpConfigService;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
-import java.io.IOException;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,12 +67,17 @@ import java.util.function.Consumer;
  * @see KeyStoreService
  */
 @Slf4j
-@Component(service = {HttpClientProvider.class, InternalHttpClientProvider.class},
+@Component(
+    service = {HttpClientProvider.class, InternalHttpClientProvider.class, ResourceChangeListener.class},
     property = {
         Constants.SERVICE_DESCRIPTION
-            + "=Provides pooled Apache HttpClient instances with AEM trust store integration"
+            + "=Provides pooled Apache HttpClient instances with AEM trust store integration",
+        ResourceChangeListener.PATHS + "=/etc/truststore",
+        ResourceChangeListener.CHANGES + "=ADDED",
+        ResourceChangeListener.CHANGES + "=CHANGED",
+        ResourceChangeListener.CHANGES + "=REMOVED"
     })
-public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpClientProvider {
+public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpClientProvider, ResourceChangeListener {
 
     private static final String SERVICE_USER = "truststore-reader";
     /**
@@ -235,31 +242,9 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                 throw new IllegalStateException(
                     "HttpConfigService not yet activated; cannot provide HTTP client");
             }
-
-            HttpClientConnectionManager connectionManager = null;
-            try {
-                connectionManager = createConnectionManager(httpConfig);
-                final HttpClientBuilder httpClientBuilder = createHttpClientBuilder(connectionManager,
-                    httpConfig);
-                if (builderMutator != null) {
-                    builderMutator.accept(httpClientBuilder);
-                }
-
-                httpClientBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
-
-                final CloseableHttpClient client = httpClientBuilder.build();
-                return new HttpClientProviderEntry.HttpClientProviderEntryBuilder()
-                    .httpClient(client)
-                    .connectionManager(connectionManager)
-                    .build();
-            } catch (final Exception e) {
-                if (connectionManager != null) {
-                    connectionManager.shutdown();
-                }
-                throw e;
-            }
+            return buildEntry(httpConfig, builderMutator);
         });
-        return entry.getHttpClient();
+        return entry.getManagedClient();
     }
 
     @Activate
@@ -268,26 +253,54 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     }
 
     /**
+     * Rebuilds the trust manager and swaps the underlying real client in every cached entry when
+     * the Granite trust store changes. Consumers holding a {@link ManagedHttpClient} reference are
+     * unaffected — their wrapper transparently picks up the new real client on the next request.
+     */
+    @Override
+    public void onChange(final List<ResourceChange> changes) {
+        log.info("Granite trust store changed, rebuilding trust manager and HTTP client pools.");
+        this.trustManager = createTrustManager();
+        entries.values().forEach(entry -> {
+            final HttpClientConnectionManager newCm = createConnectionManager(entry.getConfig());
+            final HttpClientBuilder newBuilder = createHttpClientBuilder(newCm, entry.getConfig());
+            if (entry.getBuilderMutator() != null) {
+                entry.getBuilderMutator().accept(newBuilder);
+            }
+            newBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
+            entry.swapUnderlying(newBuilder.build(), newCm);
+        });
+    }
+
+    /**
      * Shuts down every pooled connection manager and closes cached clients when the component
      * is deactivated (bundle stop or configuration removal).
      */
     @Deactivate
     private void cleanup() {
-        entries.values().stream().filter(Objects::nonNull).forEach(this::closeEntry);
+        entries.values().stream().filter(Objects::nonNull).forEach(HttpClientProviderEntry::close);
         entries.clear();
     }
 
-    /**
-     * Shuts down the connection manager, then closes the HTTP client.
-     *
-     * @param entry pooled client entry; must not be null
-     */
-    private void closeEntry(final HttpClientProviderEntry entry) {
+    private HttpClientProviderEntry buildEntry(
+        final HttpConfig httpConfig,
+        final Consumer<HttpClientBuilder> builderMutator) {
+        HttpClientConnectionManager connectionManager = null;
         try {
-            entry.getConnectionManager().shutdown();
-            entry.getHttpClient().close();
-        } catch (IOException e) {
-            log.error("Could not close HTTP client for pooled entry", e);
+            connectionManager = createConnectionManager(httpConfig);
+            final HttpClientBuilder httpClientBuilder = createHttpClientBuilder(connectionManager, httpConfig);
+            if (builderMutator != null) {
+                builderMutator.accept(httpClientBuilder);
+            }
+            httpClientBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
+            final CloseableHttpClient realClient = httpClientBuilder.build();
+            final ManagedHttpClient managedClient = new ManagedHttpClient(realClient);
+            return new HttpClientProviderEntry(managedClient, realClient, connectionManager, httpConfig, builderMutator);
+        } catch (final Exception e) {
+            if (connectionManager != null) {
+                connectionManager.shutdown();
+            }
+            throw e;
         }
     }
 

@@ -153,6 +153,8 @@ with the following content:
 ```
 If the service user is not available, the foundation falls back to the JVM trust store. See [EXAMPLES.md → Troubleshooting](EXAMPLES.md#troubleshooting).
 
+The foundation automatically picks up certificates added, updated, or removed in the Granite trust store.
+
 ---
 
 ## Optional: Adobe integration (OAuth + IMS headers)
