@@ -130,6 +130,57 @@ class CustomTimeoutsPerIntegrationTest {
     }
 
     /**
+     * Test that re-providing the same key with a different HttpConfig rebuilds the underlying
+     * pooled client while returning the same stable wrapper instance.
+     * <p>
+     * The scenario mirrors local development: a consuming OSGi component is re-activated with a
+     * new timeout value and calls {@code provide} again on the same key. The provider must swap
+     * in a fresh pool that honours the new config rather than silently returning the stale one.
+     */
+    @Test
+    void testConfigChangeRebuildsCachedClientPool() throws Exception {
+        httpServer.registerHandler("/rebuild-delayed", exchange -> {
+            try {
+                Thread.sleep(300);
+                String response = "OK";
+                exchange.sendResponseHeaders(200, response.length());
+                exchange.getResponseBody().write(response.getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().close();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+        });
+
+        HttpConfig shortTimeout = httpConfigService.getHttpConfig().toBuilder()
+            .socketTimeout(100)   // 100 ms — will time out before the 300 ms handler responds
+            .build();
+        HttpConfig longTimeout = httpConfigService.getHttpConfig().toBuilder()
+            .socketTimeout(5_000) // 5 s — will easily cover the 300 ms handler
+            .build();
+
+        // First provide: build the pool with the short timeout.
+        CloseableHttpClient client = httpClientProvider.provide("rebuild-test", shortTimeout);
+
+        // Verify the short-timeout pool is actually in effect.
+        assertThrows(SocketTimeoutException.class, () -> {
+            try (CloseableHttpResponse response = client.execute(new HttpGet(httpServer.getUriFor("/rebuild-delayed")))) {
+                // should time out before reaching here
+            }
+        }, "Client with 100 ms timeout should fail on 300 ms response");
+
+        // Re-provide the same key with a different config — must trigger a pool rebuild.
+        CloseableHttpClient sameWrapper = httpClientProvider.provide("rebuild-test", longTimeout);
+        assertSame(client, sameWrapper, "The wrapper instance must be unchanged after a config-triggered rebuild");
+
+        // The underlying pool now uses the long timeout; the same wrapper succeeds.
+        try (CloseableHttpResponse response = sameWrapper.execute(new HttpGet(httpServer.getUriFor("/rebuild-delayed")))) {
+            assertEquals(200, response.getStatusLine().getStatusCode(),
+                "Client must succeed after config-triggered pool rebuild");
+        }
+    }
+
+    /**
      * Test that HttpConfig can be customized via builder pattern.
      */
     @Test

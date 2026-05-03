@@ -131,16 +131,28 @@ Ensure the Granite trust store exists and is properly initialized in the target 
 ### Configure service user
 
 The foundation’s `HttpClientProvider` requests a service resource resolver for the `truststore-reader` subservice. You must map that subservice to a repository identity that can read the Granite trust store (`/etc/truststore`).
-An out-of-the-box `truststore-reader-service` system user already exists. Point the foundation bundle at that principal:
+
+An out-of-the-box `truststore-reader-service` system user already exists in AEM as a Cloud Service. Point the foundation bundle at that principal by creating an amended service user mapping OSGi factory configuration.
+
+Create the file at:
+
+```text
+ui.config/src/main/content/jcr_root/apps/<your-app>/osgiconfig/config/
+  org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended~aem-http-foundation.cfg.json
+```
+
+with the following content:
+
 ```json
 {
-  "service.ranking": 0,
   "user.mapping": [
-    "org.kttn.aem.aem-http-foundation.core:truststore-reader=[truststore-reader-service]"
+    "aem-http-foundation.core:truststore-reader=[truststore-reader-service]"
   ]
 }
 ```
 If the service user is not available, the foundation falls back to the JVM trust store. See [EXAMPLES.md → Troubleshooting](EXAMPLES.md#troubleshooting).
+
+The foundation automatically picks up certificates added, updated, or removed in the Granite trust store.
 
 ---
 
@@ -248,5 +260,5 @@ This is the right path when you want generic OAuth `client_credentials` without 
 
 ## Next steps
 
-- [EXAMPLES.md](EXAMPLES.md) — recommended usage patterns and troubleshooting
-- [core/REFERENCE.md](core/REFERENCE.md) — architecture, public API, and OSGi configuration reference
+- [Examples](EXAMPLES.md) — recommended usage patterns and troubleshooting
+- [Technical Reference](core/REFERENCE.md) — architecture, public API, and OSGi configuration reference

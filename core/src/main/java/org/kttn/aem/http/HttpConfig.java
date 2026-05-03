@@ -1,6 +1,7 @@
 package org.kttn.aem.http;
 
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 /**
@@ -21,6 +22,7 @@ import lombok.ToString;
  */
 @Builder(toBuilder = true)
 @ToString
+@EqualsAndHashCode
 public class HttpConfig {
 
     /** Milliseconds to wait for a TCP connection to the remote host. */

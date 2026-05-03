@@ -19,12 +19,13 @@
     <parent>
         <groupId>org.kttn.aem</groupId>
         <artifactId>aem-http-foundation</artifactId>
-        <version>0.9.1</version>
+        <version>0.10.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>aem-http-foundation.core</artifactId>
     <name>AEM HTTP Foundation - Core</name>
     <description>Core bundle for AEM HTTP Foundation</description>
+    <url>https://aem.kttn.org/aem-http-foundation/</url>
     <build>
         <plugins>
             <plugin>

@@ -108,6 +108,9 @@ dispatcher/src/conf.d/variables/default.vars
 site/
 *.groovy
 docs-internal
+.cache/
+.claude/
+memory/
 
 # OS / merge cruft
 **/.DS_Store

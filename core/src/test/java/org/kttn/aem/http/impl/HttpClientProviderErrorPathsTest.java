@@ -15,9 +15,10 @@ import org.kttn.aem.http.support.AemMockOsgiSupport;
 import org.osgi.framework.Constants;
 
 import javax.net.ssl.X509TrustManager;
-import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.util.Map;
+
+import static org.mockito.Mockito.doThrow;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,22 +80,45 @@ class HttpClientProviderErrorPathsTest {
     }
 
     @Test
-    void shouldHandleEmptyAemTrustStore() throws Exception {
-        // Simulate KeyStoreService returning an empty KeyStore
-        KeyStoreService emptyKeyStoreService = mock(KeyStoreService.class);
-        KeyStore emptyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        emptyStore.load(null, null); // Empty KeyStore
-        when(emptyKeyStoreService.getTrustStore(any(ResourceResolver.class)))
-            .thenReturn(emptyStore);
+    void shouldFallBackToJvmTrustStoreWhenAemTrustStoreIsEmpty() throws Exception {
+        // Empty Granite trust store: getAcceptedIssuers() returns an empty array, detected at
+        // activation time. The component must log at INFO and fall back to the JVM default.
+        X509TrustManager emptyAemTm = mock(X509TrustManager.class);
+        when(emptyAemTm.getAcceptedIssuers()).thenReturn(new X509Certificate[0]);
 
-        context.registerService(KeyStoreService.class, emptyKeyStoreService);
+        KeyStoreService emptyKeyStoreService = mock(KeyStoreService.class);
+        when(emptyKeyStoreService.getTrustManager(any(ResourceResolver.class)))
+            .thenReturn(emptyAemTm);
+
+        context.registerService(KeyStoreService.class, emptyKeyStoreService,
+            Map.of(Constants.SERVICE_RANKING, Integer.MAX_VALUE));
 
         HttpClientProviderImpl providerImpl = new HttpClientProviderImpl();
         httpClientProvider = context.registerInjectActivateService(providerImpl);
 
-        // Should succeed - empty AEM trust store + JVM default
         CloseableHttpClient client = httpClientProvider.provide("empty-truststore-test");
-        assertNotNull(client, "Client should be built with empty AEM trust store plus JVM defaults");
+        assertNotNull(client, "Client should be built when AEM trust store is empty");
+    }
+
+    @Test
+    void compositeTrustManagerMustFallBackOnUnexpectedRuntimeException() throws Exception {
+        // Last-resort safety net: any RuntimeException from the AEM trust manager at handshake
+        // time must not propagate — fall through to the JVM default trust manager instead.
+        X509TrustManager faultyAemTm = mock(X509TrustManager.class);
+        doThrow(new RuntimeException("unexpected internal error"))
+            .when(faultyAemTm).checkServerTrusted(any(), any());
+
+        X509TrustManager defaultTm = mock(X509TrustManager.class);
+
+        java.lang.reflect.Method method = HttpClientProviderImpl.class
+            .getDeclaredMethod("getTrustManager", X509TrustManager.class, X509TrustManager.class);
+        method.setAccessible(true);
+        X509TrustManager composite = (X509TrustManager) method.invoke(null, defaultTm, faultyAemTm);
+
+        assertDoesNotThrow(
+            () -> composite.checkServerTrusted(new X509Certificate[]{mock(X509Certificate.class)}, "RSA"),
+            "Composite must not propagate RuntimeException from AEM trust manager");
+        verify(defaultTm).checkServerTrusted(any(), any());
     }
 
     @Test
@@ -168,6 +192,7 @@ class HttpClientProviderErrorPathsTest {
     @Test
     void shouldBuildSslConnectionManagerWhenTrustManagerIsAvailable() {
         X509TrustManager aemTrustManager = mock(X509TrustManager.class);
+        when(aemTrustManager.getAcceptedIssuers()).thenReturn(new X509Certificate[]{mock(X509Certificate.class)});
         KeyStoreService workingKeyStoreService = mock(KeyStoreService.class);
         when(workingKeyStoreService.getTrustManager(any(ResourceResolver.class)))
             .thenReturn(aemTrustManager);

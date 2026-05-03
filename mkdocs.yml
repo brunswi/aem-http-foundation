@@ -1,10 +1,12 @@
 # yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
 site_name: AEM HTTP Foundation
 site_url: https://aem.kttn.org/aem-http-foundation/
+site_description: Shared outbound HTTP foundation for AEM as a Cloud Service. Pooling, retries, TLS, and OAuth client_credentials out of the box.
+site_author: Florian Brunswicker
 repo_url: https://github.com/brunswi/aem-http-foundation
 theme:
   name: material
-  custom_dir: overrides
+  custom_dir: docs/overrides
   logo: assets/logo.svg
   favicon: assets/favicon.ico
   # Material loads these from Google Fonts; avoid duplicating via @import in extra.css.
@@ -22,8 +24,11 @@ extra:
 
 extra_css:
   - stylesheets/extra.css
+hooks:
+  - docs/hooks/hooks.py
 plugins:
   - search
+  - privacy
 nav:
   - Home: index.md
   - Integration: integration.md

@@ -26,29 +26,34 @@ import org.apache.http.protocol.HttpContext;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
-import org.osgi.framework.Constants;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Deactivate;
-import org.osgi.service.component.annotations.Reference;
+import org.apache.sling.api.resource.observation.ResourceChange;
+import org.apache.sling.api.resource.observation.ResourceChangeListener;
 import org.kttn.aem.http.HttpClientProvider;
 import org.kttn.aem.http.HttpConfig;
 import org.kttn.aem.http.HttpConfigService;
+import org.osgi.framework.Constants;
+import org.osgi.service.component.annotations.Activate;
+import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Deactivate;
+import org.osgi.service.component.annotations.Reference;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
-import java.io.IOException;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
 /**
@@ -56,20 +61,30 @@ import java.util.function.Consumer;
  * merges AEM Granite trust material with the JVM default trust store, and applies configurable
  * I/O and 503 retry policies.
  * <p>
- * Clients are cached by key: the first {@code provide} call for a key constructs the pool and
- * client; subsequent calls return the same instance until deactivation.
- * {@link HttpConfigService} supplies defaults when {@code config} is {@code null}.
+ * Clients are cached by key. The first {@code provide} call for a key constructs the pool and
+ * returns a stable wrapper ({@link ManagedHttpClient}); subsequent calls with the same key return
+ * the same wrapper. If a non-null {@link HttpConfig} is provided that differs (field-by-field) from
+ * the cached one, the underlying pool is rebuilt transparently via the existing
+ * {@link HttpClientProviderEntry#swapUnderlying swapUnderlying} mechanism — consumers holding the
+ * wrapper reference automatically pick up the new pool on the next request.
+ * {@link HttpConfigService} supplies defaults when {@code config} is {@code null}; a {@code null}
+ * config on a re-provide call is treated as "no change intended".
  *
  * @see HttpConfigService
  * @see KeyStoreService
  */
 @Slf4j
-@Component(service = {HttpClientProvider.class, InternalHttpClientProvider.class},
+@Component(
+    service = {HttpClientProvider.class, InternalHttpClientProvider.class, ResourceChangeListener.class},
     property = {
         Constants.SERVICE_DESCRIPTION
-            + "=Provides pooled Apache HttpClient instances with AEM trust store integration"
+            + "=Provides pooled Apache HttpClient instances with AEM trust store integration",
+        ResourceChangeListener.PATHS + "=/etc/truststore",
+        ResourceChangeListener.CHANGES + "=ADDED",
+        ResourceChangeListener.CHANGES + "=CHANGED",
+        ResourceChangeListener.CHANGES + "=REMOVED"
     })
-public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpClientProvider {
+public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpClientProvider, ResourceChangeListener {
 
     private static final String SERVICE_USER = "truststore-reader";
     /**
@@ -85,6 +100,16 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
      * {@link Deactivate}. Not static — each component activation owns its own map.
      */
     private final ConcurrentMap<String, HttpClientProviderEntry> entries = new ConcurrentHashMap<>();
+
+    private TrustManager trustManager;
+
+    /**
+     * Single-thread scheduler used to defer the hard shutdown of superseded connection pools
+     * after a trust-store refresh. Owned by this component: created in {@link #activate} and
+     * terminated in {@link #cleanup}. A single thread is sufficient because trust-store changes
+     * are rare and the tasks are lightweight (one {@code shutdown()} + one {@code close()}).
+     */
+    private ScheduledExecutorService deferredCloseScheduler;
 
     @Reference
     private HttpConfigService httpConfigService;
@@ -162,6 +187,9 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                     aemTrustManager.checkServerTrusted(chain, authType);
                 } catch (CertificateException e) {
                     defaultTrustManager.checkServerTrusted(chain, authType);
+                } catch (RuntimeException e) {
+                    log.debug("AEM trust manager raised an unexpected error. Falling back to JVM default trust store.", e);
+                    defaultTrustManager.checkServerTrusted(chain, authType);
                 }
             }
 
@@ -193,8 +221,12 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     /**
      * {@inheritDoc}
      * <p>
-     * Thread-safe: {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} ensures at most one
-     * build per key; the first completing caller supplies {@code config} and {@code builderMutator}.
+     * Thread-safety: {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} ensures the initial
+     * pool construction happens exactly once per key. The subsequent config-comparison block is
+     * outside that atomic section, so two concurrent callers supplying the same key with different
+     * configs may both detect a mismatch and both trigger a swap. The swaps are idempotent (last
+     * writer wins on the entry fields), which is acceptable because config changes happen only
+     * during OSGi component re-activation — a single-threaded, infrequent operation in practice.
      */
     @Override
     public CloseableHttpClient provide(
@@ -217,6 +249,10 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
      * {@code OAuthClientCredentialsTokenSupplier}) to obtain a pooled client under a reserved key
      * without triggering the public-API guard. Exposed via {@link InternalHttpClientProvider};
      * not part of the {@link HttpClientProvider} contract.
+     * <p>
+     * Config-change detection and pool rebuild follow the same rules as {@link #provide}: a
+     * non-null {@code config} that differs from the cached one triggers a transparent
+     * {@link HttpClientProviderEntry#swapUnderlying swapUnderlying}; {@code null} is a no-op.
      */
     @Override
     public CloseableHttpClient provideInternal(
@@ -229,54 +265,100 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                 throw new IllegalStateException(
                     "HttpConfigService not yet activated; cannot provide HTTP client");
             }
-
-            HttpClientConnectionManager connectionManager = null;
+            return buildEntry(httpConfig, builderMutator);
+        });
+        if (config != null && !config.equals(entry.getConfig())) {
+            log.warn("HttpConfig changed for key '{}': rebuilding HTTP client pool. "
+                + "If multiple components share this key with different configs, use separate keys.", key);
+            HttpClientConnectionManager newCm = null;
             try {
-                connectionManager = createConnectionManager(httpConfig);
-                final HttpClientBuilder httpClientBuilder = createHttpClientBuilder(connectionManager,
-                    httpConfig);
+                newCm = createConnectionManager(config);
+                final HttpClientBuilder newBuilder = createHttpClientBuilder(newCm, config);
                 if (builderMutator != null) {
-                    builderMutator.accept(httpClientBuilder);
+                    builderMutator.accept(newBuilder);
                 }
-
-                httpClientBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
-
-                final CloseableHttpClient client = httpClientBuilder.build();
-                return new HttpClientProviderEntry.HttpClientProviderEntryBuilder()
-                    .httpClient(client)
-                    .connectionManager(connectionManager)
-                    .build();
+                newBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
+                // swapUnderlying uses the current entry.getConfig() for the grace period, so update
+                // config and builderMutator only after the swap to preserve the old socket-timeout window.
+                entry.swapUnderlying(newBuilder.build(), newCm, deferredCloseScheduler);
+                entry.setConfig(config);
+                entry.setBuilderMutator(builderMutator);
             } catch (final Exception e) {
-                if (connectionManager != null) {
-                    connectionManager.shutdown();
+                if (newCm != null) {
+                    newCm.shutdown();
                 }
                 throw e;
             }
+        }
+        return entry.getManagedClient();
+    }
+
+    @Activate
+    private void activate() {
+        this.trustManager = createTrustManager();
+        // Daemon thread so the scheduler does not prevent JVM shutdown if the bundle is stopped
+        // while a deferred-close task is still pending.
+        this.deferredCloseScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            final Thread t = new Thread(r, "aem-http-foundation-deferred-close");
+            t.setDaemon(true);
+            return t;
         });
-        return entry.getHttpClient();
+    }
+
+    /**
+     * Rebuilds the trust manager and swaps the underlying real client in every cached entry when
+     * the Granite trust store changes. Consumers holding a {@link ManagedHttpClient} reference are
+     * unaffected — their wrapper transparently picks up the new real client on the next request.
+     */
+    @Override
+    public void onChange(final List<ResourceChange> changes) {
+        log.info("Granite trust store changed, rebuilding trust manager and HTTP client pools.");
+        this.trustManager = createTrustManager();
+        entries.values().forEach(entry -> {
+            final HttpClientConnectionManager newCm = createConnectionManager(entry.getConfig());
+            final HttpClientBuilder newBuilder = createHttpClientBuilder(newCm, entry.getConfig());
+            if (entry.getBuilderMutator() != null) {
+                entry.getBuilderMutator().accept(newBuilder);
+            }
+            newBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
+            entry.swapUnderlying(newBuilder.build(), newCm, deferredCloseScheduler);
+        });
     }
 
     /**
      * Shuts down every pooled connection manager and closes cached clients when the component
      * is deactivated (bundle stop or configuration removal).
+     * <p>
+     * {@code shutdownNow()} on the deferred-close scheduler cancels any pending grace-period
+     * tasks. The corresponding old connection managers will not be shut down by those tasks, but
+     * at deactivation time all resources are being released anyway, so the omission is harmless.
      */
     @Deactivate
     private void cleanup() {
-        entries.values().stream().filter(Objects::nonNull).forEach(this::closeEntry);
+        entries.values().stream().filter(Objects::nonNull).forEach(HttpClientProviderEntry::close);
         entries.clear();
+        deferredCloseScheduler.shutdownNow();
     }
 
-    /**
-     * Shuts down the connection manager, then closes the HTTP client.
-     *
-     * @param entry pooled client entry; must not be null
-     */
-    private void closeEntry(final HttpClientProviderEntry entry) {
+    private HttpClientProviderEntry buildEntry(
+        final HttpConfig httpConfig,
+        final Consumer<HttpClientBuilder> builderMutator) {
+        HttpClientConnectionManager connectionManager = null;
         try {
-            entry.getConnectionManager().shutdown();
-            entry.getHttpClient().close();
-        } catch (IOException e) {
-            log.error("Could not close HTTP client for pooled entry", e);
+            connectionManager = createConnectionManager(httpConfig);
+            final HttpClientBuilder httpClientBuilder = createHttpClientBuilder(connectionManager, httpConfig);
+            if (builderMutator != null) {
+                builderMutator.accept(httpClientBuilder);
+            }
+            httpClientBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
+            final CloseableHttpClient realClient = httpClientBuilder.build();
+            final ManagedHttpClient managedClient = new ManagedHttpClient(realClient);
+            return new HttpClientProviderEntry(managedClient, realClient, connectionManager, httpConfig, builderMutator);
+        } catch (final Exception e) {
+            if (connectionManager != null) {
+                connectionManager.shutdown();
+            }
+            throw e;
         }
     }
 
@@ -291,8 +373,7 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     public HttpClientConnectionManager createConnectionManager(
         @NonNull final HttpConfig httpConfig) {
         PoolingHttpClientConnectionManager connectionManager = null;
-        final TrustManager trustManager = createTrustManager();
-        if (trustManager != null) {
+        if (this.trustManager != null) {
             try {
                 final SSLContext sslContext = SSLContext.getInstance("TLS");
                 sslContext.init(null, new TrustManager[]{trustManager}, null);
@@ -340,7 +421,11 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
             final X509TrustManager finalAemTM = (X509TrustManager) keyStoreService.getTrustManager(
                 resourceResolver);
 
-            trustManager = getTrustManager(finalDefaultTm, finalAemTM);
+            if (finalAemTM.getAcceptedIssuers().length == 0) {
+                log.info("Granite trust store integration unavailable: trust store is empty. Falling back to JVM default trust store.");
+            } else {
+                trustManager = getTrustManager(finalDefaultTm, finalAemTM);
+            }
         } catch (final LoginException e) {
             log.info("Granite trust store integration unavailable: service user '{}' not configured. Falling back to JVM default trust store.", SERVICE_USER);
             log.debug("Service user login failed:", e);

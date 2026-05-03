@@ -29,7 +29,7 @@ jobs:
         run: mvn -B verify --file pom.xml
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           use_oidc: true
           files: all/target/site/jacoco-aggregate/jacoco.xml
@@ -52,7 +52,7 @@ jobs:
         run: pip install -r requirements-docs.txt
 
       - name: Generate docs from READMEs
-        run: python scripts/generate_docs_pages.py
+        run: python docs/scripts/generate_docs_pages.py
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF_NAME: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}

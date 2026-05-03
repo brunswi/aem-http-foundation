@@ -57,10 +57,10 @@ import java.util.Map;
  * assembly of the customizers.
  *
  * <h2>Per-integration filter</h2>
- * Components consume a specific configuration via the {@code component.name} LDAP filter, for
+ * Components consume a specific configuration via the {@code service.pid} LDAP filter, for
  * example:
  * <pre>{@code
- * @Reference(target = "(component.name=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aep-prod)")
+ * @Reference(target = "(service.pid=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aep-prod)")
  * private HttpClientCustomizer aepCustomizer;
  * }</pre>
  *
