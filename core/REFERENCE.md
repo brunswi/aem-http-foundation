@@ -246,7 +246,7 @@ All time-valued fields are expressed in **milliseconds**.
 
 #### Per-integration override
 
-See [EXAMPLES.md → Example 6](../EXAMPLES.md#example-4-custom-timeouts-per-integration-intermediate) for the pattern.
+See [EXAMPLES.md → Example 4](../EXAMPLES.md#example-4-custom-timeouts-per-integration-intermediate) for the pattern.
 
 ---
 
