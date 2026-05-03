@@ -132,7 +132,7 @@ public class AdobeIoRuntimeServiceImpl implements AdobeIoRuntimeService {
     private HttpClientProvider httpClientProvider;
 
     @Reference(
-        target = "(component.name=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aio-runtime-prod)"
+        target = "(service.pid=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aio-runtime-prod)"
     )
     private HttpClientCustomizer adobeCustomizer;
 
@@ -384,12 +384,12 @@ public class AepCompositeServiceImpl implements AepCompositeService {
     private HttpClientProvider httpClientProvider;
 
     @Reference(
-        target = "(component.name=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aep-catalog-prod)"
+        target = "(service.pid=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aep-catalog-prod)"
     )
     private HttpClientCustomizer catalogCustomizer;
 
     @Reference(
-        target = "(component.name=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aep-query-prod)"
+        target = "(service.pid=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aep-query-prod)"
     )
     private HttpClientCustomizer queryCustomizer;
 

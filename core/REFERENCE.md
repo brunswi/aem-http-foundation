@@ -260,7 +260,7 @@ Factory component for Adobe server-to-server integration contexts.
 
 - **Factory PID:** `org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration` (one configuration file per integration)
 - **Example path:** `/apps/myapp/config/org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aio-runtime-prod.cfg.json`
-- Inject a specific instance with an LDAP-style target filter (OSGi service filter syntax) on `component.name`, for example `(component.name=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aio-runtime-prod)`.
+- Inject a specific instance with an LDAP-style target filter (OSGi service filter syntax) on `service.pid`, for example `(service.pid=org.kttn.aem.http.auth.adobe.impl.AdobeIntegrationConfiguration~aio-runtime-prod)`.
 - Multi-value properties are string arrays in `.cfg.json` (for example `"additional.headers": ["x-sandbox-name=prod"]`).
 
 #### Field reference
