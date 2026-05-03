@@ -3,9 +3,9 @@ package org.kttn.aem.http.impl;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.conn.ClientConnectionManager;
+import org.apache.http.conn.ClientConnectionManager; //NOSONAR - abstract method required by HttpClient interface
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.params.HttpParams;
+import org.apache.http.params.HttpParams; //NOSONAR - abstract method required by HttpClient interface
 import org.apache.http.protocol.HttpContext;
 
 import java.io.IOException;
@@ -19,10 +19,6 @@ import java.io.IOException;
  * <p>
  * Consumers must not call {@link #close()} — lifecycle is managed by the provider.
  * <p>
- * {@code CQRules:AMSCORE-553} is suppressed because {@link org.apache.http.params.HttpParams} and
- * {@link org.apache.http.conn.ClientConnectionManager} are abstract methods on the
- * {@link org.apache.http.client.HttpClient} interface that every concrete subclass must implement.
- * There is no way to extend {@link CloseableHttpClient} without referencing these deprecated types.
  */
 @SuppressWarnings("CQRules:AMSCORE-553")
 class ManagedHttpClient extends CloseableHttpClient {
