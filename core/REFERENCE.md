@@ -1,8 +1,8 @@
 # Technical Reference
 
-Technical reference for the `aem-http-foundation.core` OSGi bundle: architecture, public API, defaults, configuration model, and runtime boundaries.
+Technical reference for the `aem-http-foundation.core` OSGi bundle: architecture, public API, configuration model, and runtime boundaries.
 
-This page is intentionally reference-oriented.  
+This page is intentionally reference-oriented.   
 If you are onboarding a project, start with:
 
 - [Integration](../INTEGRATION.md) for setup and recommended integration paths
