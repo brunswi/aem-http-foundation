@@ -3,12 +3,18 @@ package org.kttn.aem.http;
 import io.wcm.testing.mock.aem.junit5.AemContext;
 import io.wcm.testing.mock.aem.junit5.AemContextExtension;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.sling.api.resource.observation.ResourceChangeListener;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.kttn.aem.http.impl.HttpClientProviderImpl;
 import org.kttn.aem.http.impl.HttpConfigServiceImpl;
 import org.kttn.aem.http.support.AemMockOsgiSupport;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -95,13 +101,14 @@ class HttpClientProviderCachingTest {
     }
 
     /**
-     * Test that the same key with different configs returns the SAME cached instance.
+     * Test that the same key with different configs returns the SAME wrapper instance.
      * <p>
-     * This is the expected behavior - the cache key is based on the string key alone,
-     * not the config. If you need different configs, use different keys.
+     * The stable {@link org.apache.http.impl.client.CloseableHttpClient} wrapper is never replaced;
+     * only the underlying pooled client is swapped when the config changes.  Consumers that cached
+     * the wrapper reference automatically pick up the new pool on the next request.
      */
     @Test
-    void testSameKeyWithDifferentConfigsReturnsSameInstance() {
+    void testSameKeyWithDifferentConfigsReturnsSameWrapperInstance() {
         HttpConfigService configService = context.getService(HttpConfigService.class);
         assertNotNull(configService);
         HttpConfig config1 = configService.getHttpConfig().toBuilder()
@@ -118,9 +125,9 @@ class HttpClientProviderCachingTest {
         assertNotNull(client1);
         assertNotNull(client2);
 
-        // Should be THE SAME instance - caching is based on key alone
+        // The wrapper (ManagedHttpClient) is the same object; only the underlying pool was rebuilt.
         assertSame(client1, client2,
-            "Same key returns same cached instance, even with different config");
+            "Same key must always return the same wrapper instance regardless of config change");
     }
 
     /**
@@ -143,6 +150,67 @@ class HttpClientProviderCachingTest {
         // Should be THE SAME instance
         assertSame(client1, client2, 
             "Same key with same config should return cached instance");
+    }
+
+    /**
+     * When {@code config} is {@code null} on a re-provide call the provider must treat it as
+     * "no change intended" and must not rebuild the underlying pool.
+     * <p>
+     * Verified by counting builder-mutator invocations: the mutator is called exactly once (during
+     * the initial build); a subsequent {@code null}-config call must not increment the count.
+     */
+    @Test
+    void testNullConfigOnReprovideDoesNotTriggerRebuild() {
+        HttpConfigService configService = context.getService(HttpConfigService.class);
+        assertNotNull(configService);
+        HttpConfig config = configService.getHttpConfig().toBuilder().socketTimeout(10_000).build();
+
+        AtomicInteger buildCount = new AtomicInteger(0);
+        Consumer<HttpClientBuilder> countingMutator = builder -> buildCount.incrementAndGet();
+
+        httpClientProvider.provide("my-api", config, countingMutator);
+        assertEquals(1, buildCount.get(), "mutator must be called exactly once during initial build");
+
+        httpClientProvider.provide("my-api", (HttpConfig) null, null);
+        assertEquals(1, buildCount.get(), "null config must not trigger a rebuild");
+    }
+
+    /**
+     * When a config change triggers a pool rebuild, the incoming {@code builderMutator} must be
+     * stored in the cache entry so that subsequent trust-store-triggered rebuilds use the updated
+     * mutator rather than the one supplied at first-provide time.
+     * <p>
+     * The trust-store refresh is simulated by calling
+     * {@link ResourceChangeListener#onChange} directly on the provider.
+     */
+    @Test
+    void testBuilderMutatorIsUpdatedOnConfigChange() {
+        HttpConfigService configService = context.getService(HttpConfigService.class);
+        assertNotNull(configService);
+        HttpConfig config1 = configService.getHttpConfig().toBuilder().socketTimeout(10_000).build();
+        HttpConfig config2 = configService.getHttpConfig().toBuilder().socketTimeout(20_000).build();
+
+        AtomicInteger mutator1Calls = new AtomicInteger(0);
+        AtomicInteger mutator2Calls = new AtomicInteger(0);
+        Consumer<HttpClientBuilder> mutator1 = builder -> mutator1Calls.incrementAndGet();
+        Consumer<HttpClientBuilder> mutator2 = builder -> mutator2Calls.incrementAndGet();
+
+        // Initial build: mutator1 is applied.
+        httpClientProvider.provide("my-api", config1, mutator1);
+        assertEquals(1, mutator1Calls.get(), "mutator1 must be called once during initial build");
+        assertEquals(0, mutator2Calls.get());
+
+        // Config change: mutator2 is applied for the rebuild; mutator1 must not be called again.
+        httpClientProvider.provide("my-api", config2, mutator2);
+        assertEquals(1, mutator1Calls.get(), "mutator1 must not be called again after config change");
+        assertEquals(1, mutator2Calls.get(), "mutator2 must be called once during config-change rebuild");
+
+        // Trust-store refresh: must use mutator2 (the stored one), not mutator1.
+        ResourceChangeListener listener = context.getService(ResourceChangeListener.class);
+        assertNotNull(listener, "HttpClientProviderImpl must be registered as ResourceChangeListener");
+        listener.onChange(List.of());
+        assertEquals(1, mutator1Calls.get(), "mutator1 must not be called during trust-store refresh");
+        assertEquals(2, mutator2Calls.get(), "mutator2 must be called again during trust-store refresh");
     }
 
     /**

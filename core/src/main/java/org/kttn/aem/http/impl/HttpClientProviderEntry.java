@@ -13,8 +13,11 @@ import java.util.function.Consumer;
 
 /**
  * Holds a {@link ManagedHttpClient} wrapper together with the real pooled client, its connection
- * manager, and the build parameters needed to rebuild everything when the Granite trust store
- * changes.
+ * manager, and the build parameters needed to rebuild the pool when either the Granite trust store
+ * changes or a consuming component re-provides the same key with a different {@link HttpConfig}.
+ * <p>
+ * The wrapper returned to consumers is never replaced; only the real client and connection manager
+ * are swapped via {@link #swapUnderlying}, so existing references remain valid across rebuilds.
  *
  * @see HttpClientProviderImpl
  */
@@ -25,13 +28,13 @@ class HttpClientProviderEntry {
     @Getter
     private final ManagedHttpClient managedClient;
 
-    /** Original config used to size and tune the pool; preserved for rebuild. */
+    /** Config used to size and tune the pool; updated when a consumer re-provides with new settings. */
     @Getter
-    private final HttpConfig config;
+    private volatile HttpConfig config;
 
-    /** Original builder mutator (auth wiring, custom interceptors, …); preserved for rebuild. */
+    /** Builder mutator (auth wiring, custom interceptors, …); updated alongside config on rebuild. */
     @Getter
-    private final Consumer<org.apache.http.impl.client.HttpClientBuilder> builderMutator;
+    private volatile Consumer<org.apache.http.impl.client.HttpClientBuilder> builderMutator;
 
     /** The real pooled client behind {@link #managedClient}. Replaced on trust-store change. */
     private volatile CloseableHttpClient realClient;
@@ -54,6 +57,25 @@ class HttpClientProviderEntry {
 
     HttpClientConnectionManager getConnectionManager() {
         return connectionManager;
+    }
+
+    /**
+     * Updates the stored config after a config-change rebuild so that future trust-store-triggered
+     * rebuilds (via {@link HttpClientProviderImpl#onChange}) use the current settings.
+     * Must be called <em>after</em> {@link #swapUnderlying} so the old socket-timeout value is
+     * still in effect as the grace period during the swap.
+     */
+    void setConfig(final HttpConfig newConfig) {
+        this.config = newConfig;
+    }
+
+    /**
+     * Updates the stored builder mutator alongside {@link #setConfig} so that trust-store-triggered
+     * rebuilds apply the same customisations (auth wiring, interceptors, …) that the re-activating
+     * component passed at config-change time.
+     */
+    void setBuilderMutator(final Consumer<org.apache.http.impl.client.HttpClientBuilder> newBuilderMutator) {
+        this.builderMutator = newBuilderMutator;
     }
 
     /**

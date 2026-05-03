@@ -61,9 +61,14 @@ import java.util.function.Consumer;
  * merges AEM Granite trust material with the JVM default trust store, and applies configurable
  * I/O and 503 retry policies.
  * <p>
- * Clients are cached by key: the first {@code provide} call for a key constructs the pool and
- * client; subsequent calls return the same instance until deactivation.
- * {@link HttpConfigService} supplies defaults when {@code config} is {@code null}.
+ * Clients are cached by key. The first {@code provide} call for a key constructs the pool and
+ * returns a stable wrapper ({@link ManagedHttpClient}); subsequent calls with the same key return
+ * the same wrapper. If a non-null {@link HttpConfig} is provided that differs (field-by-field) from
+ * the cached one, the underlying pool is rebuilt transparently via the existing
+ * {@link HttpClientProviderEntry#swapUnderlying swapUnderlying} mechanism — consumers holding the
+ * wrapper reference automatically pick up the new pool on the next request.
+ * {@link HttpConfigService} supplies defaults when {@code config} is {@code null}; a {@code null}
+ * config on a re-provide call is treated as "no change intended".
  *
  * @see HttpConfigService
  * @see KeyStoreService
@@ -216,8 +221,12 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
     /**
      * {@inheritDoc}
      * <p>
-     * Thread-safe: {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} ensures at most one
-     * build per key; the first completing caller supplies {@code config} and {@code builderMutator}.
+     * Thread-safety: {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} ensures the initial
+     * pool construction happens exactly once per key. The subsequent config-comparison block is
+     * outside that atomic section, so two concurrent callers supplying the same key with different
+     * configs may both detect a mismatch and both trigger a swap. The swaps are idempotent (last
+     * writer wins on the entry fields), which is acceptable because config changes happen only
+     * during OSGi component re-activation — a single-threaded, infrequent operation in practice.
      */
     @Override
     public CloseableHttpClient provide(
@@ -240,6 +249,10 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
      * {@code OAuthClientCredentialsTokenSupplier}) to obtain a pooled client under a reserved key
      * without triggering the public-API guard. Exposed via {@link InternalHttpClientProvider};
      * not part of the {@link HttpClientProvider} contract.
+     * <p>
+     * Config-change detection and pool rebuild follow the same rules as {@link #provide}: a
+     * non-null {@code config} that differs from the cached one triggers a transparent
+     * {@link HttpClientProviderEntry#swapUnderlying swapUnderlying}; {@code null} is a no-op.
      */
     @Override
     public CloseableHttpClient provideInternal(
@@ -254,6 +267,29 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
             }
             return buildEntry(httpConfig, builderMutator);
         });
+        if (config != null && !config.equals(entry.getConfig())) {
+            log.warn("HttpConfig changed for key '{}': rebuilding HTTP client pool. "
+                + "If multiple components share this key with different configs, use separate keys.", key);
+            HttpClientConnectionManager newCm = null;
+            try {
+                newCm = createConnectionManager(config);
+                final HttpClientBuilder newBuilder = createHttpClientBuilder(newCm, config);
+                if (builderMutator != null) {
+                    builderMutator.accept(newBuilder);
+                }
+                newBuilder.setKeepAliveStrategy(KEEP_ALIVE_STRATEGY);
+                // swapUnderlying uses the current entry.getConfig() for the grace period, so update
+                // config and builderMutator only after the swap to preserve the old socket-timeout window.
+                entry.swapUnderlying(newBuilder.build(), newCm, deferredCloseScheduler);
+                entry.setConfig(config);
+                entry.setBuilderMutator(builderMutator);
+            } catch (final Exception e) {
+                if (newCm != null) {
+                    newCm.shutdown();
+                }
+                throw e;
+            }
+        }
         return entry.getManagedClient();
     }
 
