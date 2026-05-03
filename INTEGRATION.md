@@ -145,7 +145,6 @@ with the following content:
 
 ```json
 {
-  "service.ranking": 0,
   "user.mapping": [
     "aem-http-foundation.core:truststore-reader=[truststore-reader-service]"
   ]
