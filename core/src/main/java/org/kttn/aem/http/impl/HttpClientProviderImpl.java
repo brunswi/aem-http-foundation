@@ -283,7 +283,7 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                 entry.swapUnderlying(newBuilder.build(), newCm, deferredCloseScheduler);
                 entry.setConfig(config);
                 entry.setBuilderMutator(builderMutator);
-            } catch (final Exception e) {
+            } catch (final RuntimeException e) {
                 if (newCm != null) {
                     newCm.shutdown();
                 }

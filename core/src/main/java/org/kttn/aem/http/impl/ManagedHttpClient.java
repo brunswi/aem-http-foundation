@@ -18,7 +18,13 @@ import java.io.IOException;
  * without invalidating references already held by consumers.
  * <p>
  * Consumers must not call {@link #close()} — lifecycle is managed by the provider.
+ * <p>
+ * {@code CQRules:AMSCORE-553} is suppressed because {@link org.apache.http.params.HttpParams} and
+ * {@link org.apache.http.conn.ClientConnectionManager} are abstract methods on the
+ * {@link org.apache.http.client.HttpClient} interface that every concrete subclass must implement.
+ * There is no way to extend {@link CloseableHttpClient} without referencing these deprecated types.
  */
+@SuppressWarnings("CQRules:AMSCORE-553")
 class ManagedHttpClient extends CloseableHttpClient {
 
     private volatile CloseableHttpClient delegate;
