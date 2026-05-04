@@ -18,7 +18,7 @@
    <groupId>org.kttn.aem</groupId>
    <artifactId>aem-http-foundation</artifactId>
    <packaging>pom</packaging>
-   <version>0.10.2</version>
+   <version>0.10.3-SNAPSHOT</version>
    <name>AEM HTTP Foundation</name>
    <description>AEM HTTP Foundation</description>
    <url>https://aem.kttn.org/aem-http-foundation/</url>
