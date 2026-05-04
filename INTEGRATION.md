@@ -241,7 +241,7 @@ This configuration provides:
 - an `AccessTokenSupplier` for bearer token acquisition and caching
 - an `HttpClientCustomizer` that applies bearer auth and the configured Adobe headers
 
-See [EXAMPLES.md](EXAMPLES.md) for the consumer-side usage.
+See [Example 2: Adobe integration](EXAMPLES.md#example-2-adobe-integration-recommended) for the consumer-side usage.
 
 ### Shared credentials
 

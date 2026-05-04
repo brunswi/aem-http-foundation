@@ -2,7 +2,7 @@
 
 Use this page when you want to get from zero to a working outbound HTTP call quickly.
 
-For API reference and OSGi configuration details, see [core/REFERENCE.md](core/REFERENCE.md).
+For API reference and OSGi configuration details, see [Technical Reference](core/REFERENCE.md).
 
 > **Important:** do not call `close()` on `CloseableHttpClient` instances returned by `HttpClientProvider`. The foundation manages the client lifecycle and shuts down pools on bundle deactivation. Only close the `CloseableHttpResponse` returned by `execute()`.
 
