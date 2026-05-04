@@ -14,7 +14,6 @@ import org.kttn.aem.http.auth.oauth.impl.CachingTokenAcquirer;
 import org.kttn.aem.http.impl.InternalHttpClientProvider;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
-import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentConstants;
 import org.osgi.service.component.ComponentException;
@@ -24,6 +23,9 @@ import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
+import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
@@ -31,11 +33,12 @@ import org.osgi.service.metatype.annotations.ObjectClassDefinition;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Primary entry point for configuring an Adobe integration with one OSGi factory configuration
@@ -102,6 +105,25 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
 
   @Reference
   private InternalHttpClientProvider httpClientProvider;
+
+  /**
+   * DS-managed collection of all {@link AccessTokenSupplier} services that expose a
+   * {@code credential.id} property. Declaring this reference makes SCR aware of the dependency
+   * so it sequences activation correctly — the component will not activate until at least one
+   * matching service is available, and will re-activate (GREEDY) when new ones arrive.
+   * <p>
+   * At {@link #activate} time we filter this list for the specific {@code credential.id}
+   * configured on this instance. If no match is found, a {@link ComponentException} is thrown
+   * and SCR will retry once the missing supplier becomes available.
+   */
+  @Reference(
+      cardinality = ReferenceCardinality.MULTIPLE,
+      policy = ReferencePolicy.STATIC,
+      policyOption = ReferencePolicyOption.GREEDY,
+      target = "(&(" + OsgiAccessTokenSupplierType.PROPERTY_NAME + "="
+          + OsgiAccessTokenSupplierType.VALUE_OAUTH_CLIENT_CREDENTIALS + ")(credential.id=*))"
+  )
+  private List<ServiceReference<AccessTokenSupplier>> availableSharedSupplierRefs;
 
   private AccessTokenSupplier bearerSource;
   private ServiceReference<AccessTokenSupplier> sharedCredentialRef;
@@ -171,23 +193,27 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
     } else {
       warnIfSharedModeIgnoresTokenFields(config, label);
 
-      final String filter = sharedOAuthSupplierLdapFilter(credentialId);
-      final Collection<ServiceReference<AccessTokenSupplier>> refs;
-      try {
-        refs = bundleContext.getServiceReferences(AccessTokenSupplier.class, filter);
-      } catch (final InvalidSyntaxException e) {
-        throw new ComponentException("Invalid LDAP filter for credential.id lookup: " + filter, e);
-      }
-      if (refs == null || refs.isEmpty()) {
+      // Filter the DS-injected list for the specific credential.id configured on this instance.
+      // If nothing matches, SCR will retry once a matching supplier arrives.
+      final List<ServiceReference<AccessTokenSupplier>> matchingRefs =
+          (availableSharedSupplierRefs == null
+              ? Collections.<ServiceReference<AccessTokenSupplier>>emptyList()
+              : availableSharedSupplierRefs)
+          .stream()
+          .filter(ref -> credentialId.equals(normalizeCredentialId(
+              ref.getProperty("credential.id") instanceof String
+                  ? (String) ref.getProperty("credential.id")
+                  : null)))
+          .collect(Collectors.toList());
+
+      if (matchingRefs.isEmpty()) {
         throw new ComponentException(
             "No OAuthClientCredentialsTokenSupplier registered for credential.id='"
                 + credentialId
-                + "' (filter: "
-                + filter
-                + ").");
+                + "'. Component will be retried when a matching supplier becomes available.");
       }
 
-      final ServiceReference<AccessTokenSupplier> chosen = selectHighestRanking(refs);
+      final ServiceReference<AccessTokenSupplier> chosen = selectHighestRanking(matchingRefs);
       final AccessTokenSupplier shared = bundleContext.getService(chosen);
       if (shared == null) {
         throw new ComponentException(
@@ -280,37 +306,8 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
     return s == null ? "" : s;
   }
 
-  /**
-   * LDAP filter for the generic OAuth supplier that exposes {@code credential.id}. The supplier
-   * type property excludes this component's own {@link AccessTokenSupplier} registration.
-   */
-  static String sharedOAuthSupplierLdapFilter(@NonNull final String credentialId) {
-    return "(&("
-        + OsgiAccessTokenSupplierType.PROPERTY_NAME
-        + "="
-        + OsgiAccessTokenSupplierType.VALUE_OAUTH_CLIENT_CREDENTIALS
-        + ")(credential.id="
-        + escapeLdapAssertionValue(credentialId)
-        + "))";
-  }
-
-  /**
-   * Escapes {@code \ * ( )} for use inside an LDAP equality assertion value.
-   */
-  static String escapeLdapAssertionValue(@NonNull final String value) {
-    final StringBuilder sb = new StringBuilder(value.length() + 8);
-    for (int i = 0; i < value.length(); i++) {
-      final char c = value.charAt(i);
-      if (c == '\\' || c == '*' || c == '(' || c == ')') {
-        sb.append('\\');
-      }
-      sb.append(c);
-    }
-    return sb.toString();
-  }
-
   private static ServiceReference<AccessTokenSupplier> selectHighestRanking(
-      @NonNull final Collection<ServiceReference<AccessTokenSupplier>> refs) {
+      @NonNull final List<ServiceReference<AccessTokenSupplier>> refs) {
     final List<ServiceReference<AccessTokenSupplier>> list = new ArrayList<>(refs);
     if (list.isEmpty()) {
       throw new IllegalArgumentException("Cannot select from empty service reference collection");

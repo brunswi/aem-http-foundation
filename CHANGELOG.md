@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.10.2]
+
+### Fixed
+- Fixed startup race in shared-credentials mode: AdobeIntegrationConfiguration now declares the shared AccessTokenSupplier as a DS @Reference so SCR sequences activation correctly and retries if the supplier is not yet available.
+
 ## [0.10.1]
 
 ### Fixed
@@ -53,6 +58,7 @@ Initial public release.
 - AEM Granite trust store integration: server certificates managed in AEM are trusted
   alongside the JVM default trust anchors.
 
+[0.10.2]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.1...aem-http-foundation-0.10.2
 [0.10.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.0...aem-http-foundation-0.10.1
 [0.10.0]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.1...aem-http-foundation-0.10.0
 [0.9.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.0...aem-http-foundation-0.9.1
