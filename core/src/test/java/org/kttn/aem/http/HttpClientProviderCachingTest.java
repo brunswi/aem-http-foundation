@@ -214,6 +214,47 @@ class HttpClientProviderCachingTest {
     }
 
     /**
+     * When a component re-activates with rotated credentials it passes a new {@code builderMutator}
+     * alongside the same unchanged {@link HttpConfig}.  No pool rebuild should occur (the config is
+     * identical), but the stored mutator must be updated so that the next trust-store-triggered
+     * rebuild picks up the new interceptor wiring instead of the old one.
+     * <p>
+     * This is the credential-rotation path for {@code AdobeIntegrationConfiguration}: on re-activation
+     * it creates a fresh {@code CachingTokenAcquirer} and supplies a new {@code builderMutator} via
+     * {@code provide()}.  Without the mutator-update step, the old acquirer remains wired into the
+     * pool permanently, causing {@code invalid_client} errors until the foundation bundle restarts.
+     */
+    @Test
+    void testBuilderMutatorIsUpdatedWithoutRebuildWhenConfigIsUnchanged() {
+        HttpConfigService configService = context.getService(HttpConfigService.class);
+        assertNotNull(configService);
+        HttpConfig config = configService.getHttpConfig().toBuilder().socketTimeout(10_000).build();
+
+        AtomicInteger mutator1Calls = new AtomicInteger(0);
+        AtomicInteger mutator2Calls = new AtomicInteger(0);
+        Consumer<HttpClientBuilder> mutator1 = builder -> mutator1Calls.incrementAndGet();
+        Consumer<HttpClientBuilder> mutator2 = builder -> mutator2Calls.incrementAndGet();
+
+        // Initial build: mutator1 is applied once.
+        CloseableHttpClient client1 = httpClientProvider.provide("cred-rotation-api", config, mutator1);
+        assertEquals(1, mutator1Calls.get(), "mutator1 must be called once on initial build");
+        assertEquals(0, mutator2Calls.get());
+
+        // Re-provide with same config but new mutator (credential rotation): no rebuild, no mutator call.
+        CloseableHttpClient client2 = httpClientProvider.provide("cred-rotation-api", config, mutator2);
+        assertSame(client1, client2, "same wrapper must be returned when config is unchanged");
+        assertEquals(1, mutator1Calls.get(), "no rebuild — mutator1 must not be called again");
+        assertEquals(0, mutator2Calls.get(), "no rebuild — mutator2 must not be called yet");
+
+        // Trust-store refresh: must use mutator2 (updated), not mutator1 (stale).
+        ResourceChangeListener listener = context.getService(ResourceChangeListener.class);
+        assertNotNull(listener, "HttpClientProviderImpl must be registered as ResourceChangeListener");
+        listener.onChange(List.of());
+        assertEquals(1, mutator1Calls.get(), "mutator1 must not be called during trust-store refresh");
+        assertEquals(1, mutator2Calls.get(), "mutator2 must be called once during trust-store refresh");
+    }
+
+    /**
      * Test that null or empty keys are handled properly.
      */
     @Test

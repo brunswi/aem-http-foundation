@@ -205,8 +205,12 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
       nextSharedRef = chosen;
     }
 
+    // Pass `this` rather than `nextBearerSource` so the registered interceptor holds the
+    // stable component reference. On credential rotation (@Modified re-activation), `bearerSource`
+    // is updated below; any interceptor registered before re-activation transparently picks up
+    // the new acquirer on the next request without requiring a pool rebuild.
     final AdobeIntegrationCustomizers.Builder builder =
-        AdobeIntegrationCustomizers.builder().bearer(nextBearerSource);
+        AdobeIntegrationCustomizers.builder().bearer(this);
 
     if (config.set_api_key_header()) {
       final String apiKey = resolveApiKeyHeaderValue(config, nextSharedRef);

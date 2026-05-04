@@ -1,7 +1,10 @@
 package org.kttn.aem.http.auth.adobe.impl;
 
 import io.wcm.testing.mock.aem.junit5.AemContext;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -12,11 +15,15 @@ import org.kttn.aem.http.impl.HttpClientProviderImpl;
 import org.kttn.aem.http.impl.HttpConfigServiceImpl;
 import org.kttn.aem.http.support.AemMockOsgiSupport;
 import org.kttn.aem.utilities.HttpServerExtension;
+import org.osgi.framework.BundleContext;
 import org.osgi.service.component.ComponentException;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.mockito.Mockito.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -311,5 +318,96 @@ class AdobeIntegrationConfigurationLifecycleTest {
 
         AccessToken token = reactivated.getAccessToken();
         assertEquals("preserve_modified_token", token.getAccessToken());
+    }
+
+    /**
+     * Verifies that credential rotation via {@code @Modified} re-activation is picked up by an
+     * interceptor that was already registered on a built {@link CloseableHttpClient} — without any
+     * pool rebuild or bundle restart.
+     * <p>
+     * The root cause of the production bug: {@code AdobeIntegrationCustomizers.builder().bearer()}
+     * was previously called with the specific {@code CachingTokenAcquirer} instance created at
+     * activation time. After re-activation the old acquirer stayed wired into the pool permanently,
+     * causing {@code invalid_client} errors until the foundation bundle was restarted.
+     * <p>
+     * The fix passes {@code this} (the stable {@link AdobeIntegrationConfiguration} component
+     * reference) to the builder instead. Because {@link AdobeIntegrationConfiguration#getAccessToken}
+     * always delegates to the current {@code bearerSource}, and {@code bearerSource} is updated on
+     * every re-activation, interceptors registered before a credential rotation automatically pick
+     * up the new acquirer on their next {@code process()} call.
+     */
+    @Test
+    void credentialRotationTransparentToExistingInterceptor() throws Exception {
+        server.registerHandler("/token-cred-rot-v1", exchange -> {
+            String body = "{\"access_token\":\"token_cred_rot_v1\",\"expires_in\":3600}";
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length());
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+        server.registerHandler("/token-cred-rot-v2", exchange -> {
+            String body = "{\"access_token\":\"token_cred_rot_v2\",\"expires_in\":3600}";
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length());
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+        });
+
+        AtomicReference<String> capturedAuth = new AtomicReference<>();
+        server.registerHandler("/api-cred-rot", exchange -> {
+            capturedAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = new byte[0];
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(body);
+            }
+        });
+
+        // Activate with V1 credentials.
+        AdobeIntegrationConfiguration integration = context.registerInjectActivateService(
+            new AdobeIntegrationConfiguration((HttpClientProviderImpl) httpClientProvider),
+            Map.of(
+                "clientId", "cred-rot-client-v1",
+                "clientSecret", "cred-rot-secret-v1",
+                "tokenEndpointUrl", server.getUriFor("/token-cred-rot-v1").toString()
+            )
+        );
+
+        // Simulate what HttpClientProvider does at pool-build time: customize() registers the
+        // interceptor on the builder. With the fix, the interceptor holds `integration` (not the
+        // specific V1 CachingTokenAcquirer), so it will transparently use the current bearerSource.
+        HttpClientBuilder builder = HttpClientBuilder.create();
+        integration.customize(builder);
+        try (CloseableHttpClient client = builder.build()) {
+
+            // First request — must use V1 token.
+            EntityUtils.consume(client.execute(new HttpGet(server.getUriFor("/api-cred-rot"))).getEntity());
+            assertEquals("Bearer token_cred_rot_v1", capturedAuth.get(),
+                "First request must carry the V1 bearer token");
+
+            // Re-activate the SAME instance with V2 credentials (simulate OSGi @Modified).
+            // The pool is NOT rebuilt; no new customize() call is made.
+            AdobeIntegrationConfiguration.Config configV2 = mock(AdobeIntegrationConfiguration.Config.class);
+            when(configV2.credential_id()).thenReturn("");
+            when(configV2.clientId()).thenReturn("cred-rot-client-v2");
+            when(configV2.clientSecret()).thenReturn("cred-rot-secret-v2");
+            when(configV2.scopes()).thenReturn("");
+            when(configV2.set_api_key_header()).thenReturn(false);
+            when(configV2.org_id_header_value()).thenReturn("");
+            when(configV2.tokenEndpointUrl()).thenReturn(server.getUriFor("/token-cred-rot-v2").toString());
+            when(configV2.additional_token_params()).thenReturn(new String[0]);
+            when(configV2.additional_headers()).thenReturn(new String[0]);
+
+            BundleContext bundleContext = context.bundleContext();
+            integration.activate(configV2, bundleContext, Map.of());
+
+            // Second request through the same client — interceptor must now use V2 token.
+            EntityUtils.consume(client.execute(new HttpGet(server.getUriFor("/api-cred-rot"))).getEntity());
+            assertEquals("Bearer token_cred_rot_v2", capturedAuth.get(),
+                "After credential rotation, the existing interceptor must use the V2 bearer token "
+                    + "without any pool rebuild");
+        }
     }
 }
