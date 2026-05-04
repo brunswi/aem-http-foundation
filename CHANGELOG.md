@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1]
+
+### Fixed
+- Credential rotation in `AdobeIntegrationConfiguration` is now picked up by existing HTTP
+  client interceptors without a pool rebuild or bundle restart. 
+- `KeyStoreService.getTrustManager()` throwing `SecurityException` is now caught and falls back to the JVM default trust store instead of failing
+  component activation.
+
 ## [0.10.0]
 
 ### Added
@@ -45,6 +53,7 @@ Initial public release.
 - AEM Granite trust store integration: server certificates managed in AEM are trusted
   alongside the JVM default trust anchors.
 
+[0.10.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.0...aem-http-foundation-0.10.1
 [0.10.0]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.1...aem-http-foundation-0.10.0
 [0.9.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.0...aem-http-foundation-0.9.1
 [0.9.0]: https://github.com/brunswi/aem-http-foundation/releases/tag/aem-http-foundation-0.9.0
