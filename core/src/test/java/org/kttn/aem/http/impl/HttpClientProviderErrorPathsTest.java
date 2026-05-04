@@ -80,7 +80,7 @@ class HttpClientProviderErrorPathsTest {
     }
 
     @Test
-    void shouldFallBackToJvmTrustStoreWhenAemTrustStoreIsEmpty() throws Exception {
+    void shouldFallBackToJvmTrustStoreWhenAemTrustStoreIsEmpty() {
         // Empty Granite trust store: getAcceptedIssuers() returns an empty array, detected at
         // activation time. The component must log at INFO and fall back to the JVM default.
         X509TrustManager emptyAemTm = mock(X509TrustManager.class);
@@ -205,6 +205,31 @@ class HttpClientProviderErrorPathsTest {
 
         CloseableHttpClient client = httpClientProvider.provide("ssl-connection-manager-test");
         assertNotNull(client, "Client should be built with a custom SSL connection manager");
+    }
+
+    /**
+     * On AEMaaCS, {@link com.adobe.granite.keystore.KeyStoreService#getTrustManager} wraps
+     * {@link KeyStoreNotInitialisedException} inside a {@link SecurityException} when
+     * {@code /etc/truststore/truststore.p12} is absent. The provider must catch this and fall back
+     * to the JVM default trust store rather than letting the exception propagate out of
+     * {@code activate()}, which would otherwise trigger a cascade of dependent component failures.
+     */
+    @Test
+    void shouldFallBackToJvmTrustStoreWhenKeyStoreServiceThrowsSecurityException() {
+        KeyStoreService faultyKeyStoreService = mock(KeyStoreService.class);
+        when(faultyKeyStoreService.getTrustManager(any(ResourceResolver.class)))
+            .thenThrow(new SecurityException("Wrapping KeyStoreNotInitialisedException from AEMaaCS"));
+
+        context.registerService(KeyStoreService.class, faultyKeyStoreService,
+            Map.of(Constants.SERVICE_RANKING, Integer.MAX_VALUE));
+
+        HttpClientProviderImpl providerImpl = new HttpClientProviderImpl();
+        assertDoesNotThrow(
+            () -> httpClientProvider = context.registerInjectActivateService(providerImpl),
+            "activate() must not throw when KeyStoreService raises SecurityException");
+
+        CloseableHttpClient client = httpClientProvider.provide("security-exception-fallback-test");
+        assertNotNull(client, "Provider must be usable after SecurityException fallback");
     }
 
     @Test

@@ -3,9 +3,9 @@ package org.kttn.aem.http.impl;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.conn.ClientConnectionManager;
+import org.apache.http.conn.ClientConnectionManager; //NOSONAR - abstract method required by HttpClient interface
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.params.HttpParams;
+import org.apache.http.params.HttpParams; //NOSONAR - abstract method required by HttpClient interface
 import org.apache.http.protocol.HttpContext;
 
 import java.io.IOException;
@@ -18,7 +18,9 @@ import java.io.IOException;
  * without invalidating references already held by consumers.
  * <p>
  * Consumers must not call {@link #close()} — lifecycle is managed by the provider.
+ * <p>
  */
+@SuppressWarnings("CQRules:AMSCORE-553")
 class ManagedHttpClient extends CloseableHttpClient {
 
     private volatile CloseableHttpClient delegate;

@@ -283,12 +283,19 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
                 entry.swapUnderlying(newBuilder.build(), newCm, deferredCloseScheduler);
                 entry.setConfig(config);
                 entry.setBuilderMutator(builderMutator);
-            } catch (final Exception e) {
+            } catch (final RuntimeException e) {
                 if (newCm != null) {
                     newCm.shutdown();
                 }
                 throw e;
             }
+        } else if (config != null && builderMutator != null) {
+            // Config unchanged — no pool rebuild needed. Store the new mutator so that any future
+            // trust-store-triggered rebuild (onChange) picks up the latest interceptor wiring.
+            // This covers credential rotation in AdobeIntegrationConfiguration: when the component
+            // re-activates with a new CachingTokenAcquirer it passes a new builderMutator here;
+            // without this update the old acquirer would remain wired into the pool indefinitely.
+            entry.setBuilderMutator(builderMutator);
         }
         return entry.getManagedClient();
     }
@@ -432,6 +439,11 @@ public class HttpClientProviderImpl implements HttpClientProvider, InternalHttpC
         } catch (final KeyStoreNotInitialisedException e) {
             log.info("Granite trust store integration unavailable: trust store not initialized in AEM. Falling back to JVM default trust store.");
             log.debug("Trust store not initialized:", e);
+        } catch (final SecurityException e) {
+            // On AEMaaCS, KeyStoreService wraps KeyStoreNotInitialisedException in a
+            // SecurityException when /etc/truststore/truststore.p12 is absent.
+            log.info("Granite trust store integration unavailable: KeyStoreService threw a SecurityException (trust store likely not initialized on this environment). Falling back to JVM default trust store.");
+            log.debug("Trust store SecurityException:", e);
         } catch (final NoSuchAlgorithmException | KeyStoreException e) {
             log.warn("Granite trust store integration failed due to cryptographic configuration issue. Falling back to JVM default trust store.", e);
         }

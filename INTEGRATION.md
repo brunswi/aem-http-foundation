@@ -227,19 +227,21 @@ Example:
 ```json
 {
   "clientId": "YOUR_CLIENT_ID",
-  "clientSecret": "$[secret:aio.runtime.client.secret]",
+  "clientSecret": "$[secret:aio_runtime_client_secret]",
   "scopes": "openid,AdobeID,read_organizations",
   "set.api.key.header": true,
   "org.id.header.value": "YOUR_ORG_ID@AdobeOrg"
 }
 ```
 
+The `$[secret:...]` values are resolved from [Cloud Manager environment variables](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/using-cloud-manager/environment-variables).
+
 This configuration provides:
 
 - an `AccessTokenSupplier` for bearer token acquisition and caching
 - an `HttpClientCustomizer` that applies bearer auth and the configured Adobe headers
 
-See [EXAMPLES.md](EXAMPLES.md) for the consumer-side usage.
+See [Example 2: Adobe integration](EXAMPLES.md#example-2-adobe-integration-recommended) for the consumer-side usage.
 
 ### Shared credentials
 

@@ -123,6 +123,7 @@ public final class CachingTokenAcquirer implements AccessTokenSupplier {
    * IMS POST; later threads observe the freshly cached token.
    */
   @Override
+  @SuppressWarnings("AEM Rules:AEM-15")
   public AccessToken getAccessToken() throws TokenUnavailableException {
     if (localExpiry == null || Instant.now().isAfter(localExpiry)) {
       synchronized (this) {
@@ -226,7 +227,11 @@ public final class CachingTokenAcquirer implements AccessTokenSupplier {
   /**
    * Test hook: forces the next {@link #getAccessToken()} call to refresh, regardless of any
    * previously cached token. Package-private; intended only for unit tests.
+   * <p>
+   * {@code synchronized} is used here to match the locking in {@link #getAccessToken()} so that
+   * a test thread invalidating the cache is always visible to the next acquirer thread.
    */
+  @SuppressWarnings("AEM Rules:AEM-15")
   synchronized void invalidateCacheForTest() {
     this.cachedToken = null;
     this.localExpiry = null;

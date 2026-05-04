@@ -19,7 +19,7 @@
     <parent>
         <groupId>org.kttn.aem</groupId>
         <artifactId>aem-http-foundation</artifactId>
-        <version>0.10.0</version>
+        <version>0.10.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>aem-http-foundation.core</artifactId>
