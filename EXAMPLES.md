@@ -92,7 +92,7 @@ Create:
 ```json
 {
   "clientId": "YOUR_CLIENT_ID",
-  "clientSecret": "$[secret:aio.runtime.client.secret]",
+  "clientSecret": "$[secret:aio_runtime_client_secret]",
   "scopes": "openid,AdobeID,read_organizations",
   "set.api.key.header": true,
   "org.id.header.value": "YOUR_ORG_ID@AdobeOrg"
@@ -316,7 +316,7 @@ Create a shared OAuth supplier configuration:
   "credential.id": "shared-aep-prod",
   "tokenEndpointUrl": "https://ims-na1.adobelogin.com/ims/token/v3",
   "clientId": "YOUR_CLIENT_ID",
-  "clientSecret": "$[secret:shared.aep.client.secret]",
+  "clientSecret": "$[secret:shared_aep_client_secret]",
   "scopes": "openid,AdobeID,read_organizations"
 }
 ```

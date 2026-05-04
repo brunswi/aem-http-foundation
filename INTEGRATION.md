@@ -227,12 +227,14 @@ Example:
 ```json
 {
   "clientId": "YOUR_CLIENT_ID",
-  "clientSecret": "$[secret:aio.runtime.client.secret]",
+  "clientSecret": "$[secret:aio_runtime_client_secret]",
   "scopes": "openid,AdobeID,read_organizations",
   "set.api.key.header": true,
   "org.id.header.value": "YOUR_ORG_ID@AdobeOrg"
 }
 ```
+
+The `$[secret:...]` values are resolved from [Cloud Manager environment variables](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/using-cloud-manager/environment-variables).
 
 This configuration provides:
 
