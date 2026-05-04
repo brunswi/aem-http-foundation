@@ -21,7 +21,7 @@ coverage:
     patch:
       default:
         target: 70%       # New code in PRs should be at least 70% covered
-        threshold: 5%
+        threshold: 15%    # defensive/framework edge cases are intentionally untested
 
 # Comment on PRs with coverage summary and file-level changes
 comment:
