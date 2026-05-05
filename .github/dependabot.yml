@@ -6,6 +6,11 @@ updates:
     target-branch: develop
     schedule:
       interval: "weekly"
+    ignore:
+      # Johnzon 2.x is jakarta-only; aem-sdk-api ships javax.json on the test classpath
+      # and would VerifyError at startup. Stay on 1.x until AEM SDK migrates to jakarta.json.
+      - dependency-name: "org.apache.johnzon:johnzon-core"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
