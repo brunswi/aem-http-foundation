@@ -10,6 +10,7 @@ import org.kttn.aem.http.HttpConfigService;
 import org.kttn.aem.http.auth.oauth.AccessToken;
 import org.kttn.aem.http.auth.oauth.AccessTokenSupplier;
 import org.kttn.aem.http.auth.oauth.OsgiAccessTokenSupplierType;
+import org.kttn.aem.http.auth.oauth.TokenUnavailableException;
 import org.kttn.aem.http.impl.HttpClientProviderImpl;
 import org.kttn.aem.http.impl.HttpConfigServiceImpl;
 import org.kttn.aem.http.support.AemMockOsgiSupport;
@@ -329,27 +330,28 @@ class AdobeIntegrationConfigurationTest {
     }
 
     @Test
-    void shouldFailWhenCredentialIdReferencesNonExistentSupplier() {
+    void shouldDeferTokenAcquisitionWhenCredentialIdReferencesNonExistentSupplier() {
         HttpClientProviderImpl providerImpl = (HttpClientProviderImpl) httpClientProvider;
 
-        // Try to reference a credential.id that doesn't exist
+        // Reference a credential.id with no matching supplier. activate() must succeed (the
+        // integration's services need to be visible so downstream consumers can bind without
+        // a startup race), but getAccessToken() must throw until the supplier appears.
         Map<String, Object> config = Map.of(
             "credential.id", "non-existent-credential",
             "set.api.key.header", true
         );
 
-        RuntimeException exception = assertThrows(
-            RuntimeException.class,
-            () -> context.registerInjectActivateService(
-                new AdobeIntegrationConfiguration(providerImpl),
-                config
-            )
+        AdobeIntegrationConfiguration integration = context.registerInjectActivateService(
+            new AdobeIntegrationConfiguration(providerImpl),
+            config
         );
+        assertNotNull(integration);
 
-        // Verify the root cause mentions the missing credential
-        Throwable cause = exception.getCause();
-        assertTrue(cause.getMessage().contains("credential.id") ||
-                   cause.getMessage().contains("non-existent-credential"));
+        assertThrows(
+            TokenUnavailableException.class,
+            integration::getAccessToken,
+            "getAccessToken() must throw while no matching supplier is registered"
+        );
     }
 
     /**
@@ -362,8 +364,6 @@ class AdobeIntegrationConfigurationTest {
      * credentials testing. Instead, create a mock {@link AccessTokenSupplier} and register it
      * with {@code registerService(Class, instance, Map<String, Object> props)} to provide the
      * exact service properties the LDAP filter expects.
-     *
-     * @see SharedCredentialsWithLdapFilterTest for the proof-of-concept
      */
     @Test
     void shouldUseSharedCredentialWhenCredentialIdProvided() throws Exception {
@@ -398,10 +398,9 @@ class AdobeIntegrationConfigurationTest {
 
         // Step 2: Create an AdobeIntegrationConfiguration that references the shared credential
         Map<String, Object> integrationConfig = Map.of(
-            "credential.id", "shared-aep-prod",  // Reference the shared credential
+            "credential.id", "shared-aep-prod",
             "set.api.key.header", true,
             "org.id.header.value", "SHARED_ORG@AdobeOrg"
-            // Note: clientId, clientSecret, scopes are NOT provided - they come from the shared supplier
         );
 
         AdobeIntegrationConfiguration integration = context.registerInjectActivateService(
@@ -527,7 +526,6 @@ class AdobeIntegrationConfigurationTest {
         Map<String, Object> integrationConfig = Map.of(
             "credential.id", "fallback-cred",
             "set.api.key.header", true  // Want API key but no clientId on this config
-            // clientId NOT provided - should use shared supplier's clientId
         );
 
         AdobeIntegrationConfiguration integration = context.registerInjectActivateService(
