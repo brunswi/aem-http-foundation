@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Fluent builder that assembles the typical Adobe header set for an outbound integration into a
@@ -52,6 +53,7 @@ public final class AdobeIntegrationCustomizers {
 
         private AccessTokenSupplier bearerSupplier;
         private String apiKey;
+        private Supplier<String> apiKeySupplier;
         private String orgId;
         private final Map<String, String> additionalHeaders = new LinkedHashMap<>();
 
@@ -74,6 +76,20 @@ public final class AdobeIntegrationCustomizers {
          */
         public Builder apiKey(final String apiKey) {
             this.apiKey = apiKey;
+            this.apiKeySupplier = null;
+            return this;
+        }
+
+        /**
+         * Adds an {@code x-api-key} header whose value is resolved on every outbound request via
+         * the given supplier. Use this when the value depends on a service that may register
+         * asynchronously (the integration stays attached and starts emitting the header as soon
+         * as the supplier returns a non-blank value). When the supplier returns {@code null} or
+         * blank, the header is omitted for that request.
+         */
+        public Builder apiKey(final Supplier<String> apiKeySupplier) {
+            this.apiKeySupplier = apiKeySupplier;
+            this.apiKey = null;
             return this;
         }
 
@@ -110,6 +126,8 @@ public final class AdobeIntegrationCustomizers {
             }
             if (apiKey != null && !apiKey.isBlank()) {
                 parts.add(new AdobeApiKeyHeaderCustomizer(apiKey));
+            } else if (apiKeySupplier != null) {
+                parts.add(new AdobeApiKeyHeaderCustomizer(apiKeySupplier));
             }
             if (orgId != null && !orgId.isBlank()) {
                 parts.add(new AdobeOrgIdHeaderCustomizer(orgId));

@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,7 +24,7 @@ class AdobeApiKeyHeaderCustomizerTest {
     void shouldRejectNullApiKey() {
         IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class,
-            () -> new AdobeApiKeyHeaderCustomizer(null)
+            () -> new AdobeApiKeyHeaderCustomizer((String) null)
         );
         assertEquals("apiKey must not be null or blank", exception.getMessage());
     }
@@ -114,6 +116,74 @@ class AdobeApiKeyHeaderCustomizerTest {
     @Test
     void shouldUseCorrectHeaderName() {
         assertEquals("x-api-key", AdobeApiKeyHeaderCustomizer.API_KEY_HEADER);
+    }
+
+    @Test
+    void shouldRejectNullSupplier() {
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> new AdobeApiKeyHeaderCustomizer((Supplier<String>) null)
+        );
+        assertEquals("apiKeySupplier must not be null", exception.getMessage());
+    }
+
+    @Test
+    void supplierBasedConstructorEvaluatesPerRequest() {
+        AtomicReference<String> currentValue = new AtomicReference<>("first");
+        AdobeApiKeyHeaderCustomizer customizer =
+            new AdobeApiKeyHeaderCustomizer(currentValue::get);
+
+        HttpRequest request1 = new BasicHttpRequest("GET", "https://example.adobe.io/api");
+        customizer.process(request1, new BasicHttpContext());
+        assertEquals("first", request1.getFirstHeader("x-api-key").getValue());
+
+        currentValue.set("second");
+        HttpRequest request2 = new BasicHttpRequest("GET", "https://example.adobe.io/api");
+        customizer.process(request2, new BasicHttpContext());
+        assertEquals("second", request2.getFirstHeader("x-api-key").getValue(),
+            "Supplier must be evaluated on every request, not cached");
+    }
+
+    @Test
+    void supplierReturningNullOmitsHeader() {
+        AdobeApiKeyHeaderCustomizer customizer =
+            new AdobeApiKeyHeaderCustomizer(() -> null);
+
+        HttpRequest request = new BasicHttpRequest("GET", "https://example.adobe.io/api");
+        customizer.process(request, new BasicHttpContext());
+
+        assertNull(request.getFirstHeader("x-api-key"),
+            "Header must be omitted when supplier returns null");
+    }
+
+    @Test
+    void supplierReturningBlankOmitsHeader() {
+        AdobeApiKeyHeaderCustomizer customizer =
+            new AdobeApiKeyHeaderCustomizer(() -> "   ");
+
+        HttpRequest request = new BasicHttpRequest("GET", "https://example.adobe.io/api");
+        customizer.process(request, new BasicHttpContext());
+
+        assertNull(request.getFirstHeader("x-api-key"),
+            "Header must be omitted when supplier returns blank");
+    }
+
+    @Test
+    void supplierStartingBlankThenReturningValueAttachesHeaderOnSubsequentRequest() {
+        AtomicReference<String> currentValue = new AtomicReference<>(null);
+        AdobeApiKeyHeaderCustomizer customizer =
+            new AdobeApiKeyHeaderCustomizer(currentValue::get);
+
+        HttpRequest deferred = new BasicHttpRequest("GET", "https://example.adobe.io/api");
+        customizer.process(deferred, new BasicHttpContext());
+        assertNull(deferred.getFirstHeader("x-api-key"),
+            "Header must be omitted while supplier returns null");
+
+        currentValue.set("eventual-client-id");
+        HttpRequest resolved = new BasicHttpRequest("GET", "https://example.adobe.io/api");
+        customizer.process(resolved, new BasicHttpContext());
+        assertEquals("eventual-client-id", resolved.getFirstHeader("x-api-key").getValue(),
+            "Header must be attached once the supplier starts returning a value");
     }
 
     /**

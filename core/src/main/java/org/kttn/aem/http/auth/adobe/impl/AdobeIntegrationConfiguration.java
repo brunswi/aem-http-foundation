@@ -14,6 +14,7 @@ import org.kttn.aem.http.auth.oauth.impl.CachingTokenAcquirer;
 import org.kttn.aem.http.impl.InternalHttpClientProvider;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.Constants;
+import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.component.ComponentConstants;
 import org.osgi.service.component.ComponentException;
@@ -23,22 +24,15 @@ import org.osgi.service.component.annotations.ConfigurationPolicy;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Modified;
 import org.osgi.service.component.annotations.Reference;
-import org.osgi.service.component.annotations.ReferenceCardinality;
-import org.osgi.service.component.annotations.ReferencePolicy;
-import org.osgi.service.component.annotations.ReferencePolicyOption;
 import org.osgi.service.metatype.annotations.AttributeDefinition;
 import org.osgi.service.metatype.annotations.Designate;
 import org.osgi.service.metatype.annotations.ObjectClassDefinition;
+import org.osgi.util.tracker.ServiceTracker;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Primary entry point for configuring an Adobe integration with one OSGi factory configuration
@@ -70,12 +64,21 @@ import java.util.stream.Collectors;
  * <h2>Shared OAuth credentials</h2>
  * When {@link Config#credential_id()} is non-empty, bearer tokens are obtained from an
  * {@link org.kttn.aem.http.auth.oauth.impl.OAuthClientCredentialsTokenSupplier} registered with
- * the same {@code credential.id} service property (see Example 3 in {@code EXAMPLES.md}). Inline
+ * the same {@code credential.id} service property (see Example 5 in {@code EXAMPLES.md}). Inline
  * {@link Config#clientId()}, {@link Config#clientSecret()}, {@link Config#scopes()},
  * {@link Config#tokenEndpointUrl()}, and {@link Config#additional_token_params()} are then
  * ignored for token acquisition. For {@code x-api-key}, if {@link Config#set_api_key_header()} is
  * true and {@link Config#clientId()} is left blank, the client ID is read from the shared
  * supplier's service properties.
+ *
+ * <h2>Startup ordering</h2>
+ * The shared supplier is looked up via an internal {@link ServiceTracker} rather than an OSGi DS
+ * {@code @Reference}. This means {@code activate()} always succeeds for shared-credential
+ * configurations: the integration's services are registered immediately and downstream consumers
+ * can bind to them without a startup race. If the matching supplier is not yet registered when
+ * a request arrives, {@link #getAccessToken()} throws {@link TokenUnavailableException} (and the
+ * {@code x-api-key} header is omitted) until the supplier appears; once it does, requests start
+ * succeeding without rebuilding any HTTP client.
  *
  * <h2>Escape hatches</h2>
  * The {@link Config#additional_token_params()} and {@link Config#additional_headers()}
@@ -88,6 +91,7 @@ import java.util.stream.Collectors;
 @Component(
     service = {AccessTokenSupplier.class, HttpClientCustomizer.class},
     configurationPolicy = ConfigurationPolicy.REQUIRE,
+    immediate = true,
     property = {
         Constants.SERVICE_DESCRIPTION
             + "=Adobe integration configuration (OAuth client_credentials + Adobe headers)",
@@ -106,28 +110,13 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
   @Reference
   private InternalHttpClientProvider httpClientProvider;
 
-  /**
-   * DS-managed collection of all {@link AccessTokenSupplier} services that expose a
-   * {@code credential.id} property. Declaring this reference makes SCR aware of the dependency
-   * so it sequences activation correctly — the component will not activate until at least one
-   * matching service is available, and will re-activate (GREEDY) when new ones arrive.
-   * <p>
-   * At {@link #activate} time we filter this list for the specific {@code credential.id}
-   * configured on this instance. If no match is found, a {@link ComponentException} is thrown
-   * and SCR will retry once the missing supplier becomes available.
-   */
-  @Reference(
-      cardinality = ReferenceCardinality.MULTIPLE,
-      policy = ReferencePolicy.STATIC,
-      policyOption = ReferencePolicyOption.GREEDY,
-      target = "(&(" + OsgiAccessTokenSupplierType.PROPERTY_NAME + "="
-          + OsgiAccessTokenSupplierType.VALUE_OAUTH_CLIENT_CREDENTIALS + ")(credential.id=*))"
-  )
-  private List<ServiceReference<AccessTokenSupplier>> availableSharedSupplierRefs;
+  // Inline mode: own acquirer; null in shared mode.
+  private volatile CachingTokenAcquirer inlineAcquirer;
 
-  private AccessTokenSupplier bearerSource;
-  private ServiceReference<AccessTokenSupplier> sharedCredentialRef;
-  private HttpClientCustomizer composedCustomizer;
+  // Shared mode: tracker for the specific supplier matching credential.id; null in inline mode.
+  private volatile ServiceTracker<AccessTokenSupplier, AccessTokenSupplier> sharedSupplierTracker;
+
+  private volatile HttpClientCustomizer composedCustomizer;
 
   public AdobeIntegrationConfiguration() {
   }
@@ -141,8 +130,6 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
 
   /**
    * Builds token acquisition (inline or shared) and assembles the Adobe header customizer chain.
-   *
-   * @param config factory configuration instance
    */
   @Activate
   @Modified
@@ -150,118 +137,133 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
       @NonNull final Config config,
       @NonNull final BundleContext bundleContext,
       @NonNull final Map<String, Object> properties) {
-    releaseSharedCredential(bundleContext);
+    closeSharedSupplierTracker();
+    inlineAcquirer = null;
 
     final String label = componentNameLabel(properties);
     final String credentialId = normalizeCredentialId(config.credential_id());
 
-    final CachingTokenAcquirer nextOwnedAcquirer;
-    final AccessTokenSupplier nextBearerSource;
-    final ServiceReference<AccessTokenSupplier> nextSharedRef;
-
     if (credentialId.isEmpty()) {
-      final String clientId = nullToEmpty(config.clientId());
-      final String clientSecret = nullToEmpty(config.clientSecret());
-      if (clientId.isBlank() || clientSecret.isBlank()) {
-        throw new ComponentException(
-            "clientId and clientSecret are required when credential.id is not set.");
-      }
-
-      log.info(
-          "{} '{}' activated (inline OAuth, clientId={}, orgIdHeaderValue='{}', tokenEndpoint={})",
-          getClass().getSimpleName(),
-          label,
-          clientId,
-          config.org_id_header_value(),
-          config.tokenEndpointUrl());
-
-      final CloseableHttpClient tokenClient =
-          httpClientProvider.provideInternal(TOKEN_CLIENT_KEY, null, null);
-
-      nextOwnedAcquirer =
-          new CachingTokenAcquirer(
-              tokenClient,
-              config.tokenEndpointUrl(),
-              clientId,
-              clientSecret,
-              config.scopes(),
-              parseKeyValuePairs(config.additional_token_params()),
-              CachingTokenAcquirer.DEFAULT_REFRESH_LENIENCY_SECONDS,
-              label);
-      nextBearerSource = nextOwnedAcquirer;
-      nextSharedRef = null;
+      activateInlineMode(config, label);
     } else {
-      warnIfSharedModeIgnoresTokenFields(config, label);
+      activateSharedMode(config, bundleContext, credentialId, label);
+    }
+  }
 
-      // Filter the DS-injected list for the specific credential.id configured on this instance.
-      // If nothing matches, SCR will retry once a matching supplier arrives.
-      final List<ServiceReference<AccessTokenSupplier>> matchingRefs =
-          (availableSharedSupplierRefs == null
-              ? Collections.<ServiceReference<AccessTokenSupplier>>emptyList()
-              : availableSharedSupplierRefs)
-          .stream()
-          .filter(ref -> credentialId.equals(normalizeCredentialId(
-              ref.getProperty("credential.id") instanceof String
-                  ? (String) ref.getProperty("credential.id")
-                  : null)))
-          .collect(Collectors.toList());
+  private void activateInlineMode(@NonNull final Config config, @NonNull final String label) {
+    final String clientId = nullToEmpty(config.clientId());
+    final String clientSecret = nullToEmpty(config.clientSecret());
+    if (clientId.isBlank() || clientSecret.isBlank()) {
+      throw new ComponentException(
+          "clientId and clientSecret are required when credential.id is not set.");
+    }
 
-      if (matchingRefs.isEmpty()) {
-        throw new ComponentException(
-            "No OAuthClientCredentialsTokenSupplier registered for credential.id='"
-                + credentialId
-                + "'. Component will be retried when a matching supplier becomes available.");
-      }
+    log.info(
+        "{} '{}' activated (inline OAuth, clientId={}, orgIdHeaderValue='{}', tokenEndpoint={})",
+        getClass().getSimpleName(),
+        label,
+        clientId,
+        config.org_id_header_value(),
+        config.tokenEndpointUrl());
 
-      final ServiceReference<AccessTokenSupplier> chosen = selectHighestRanking(matchingRefs);
-      final AccessTokenSupplier shared = bundleContext.getService(chosen);
-      if (shared == null) {
-        throw new ComponentException(
-            "Could not obtain AccessTokenSupplier for credential.id='" + credentialId + "'.");
-      }
+    final CloseableHttpClient tokenClient =
+        httpClientProvider.provideInternal(TOKEN_CLIENT_KEY, null, null);
 
+    inlineAcquirer = new CachingTokenAcquirer(
+        tokenClient,
+        config.tokenEndpointUrl(),
+        clientId,
+        clientSecret,
+        config.scopes(),
+        parseKeyValuePairs(config.additional_token_params()),
+        CachingTokenAcquirer.DEFAULT_REFRESH_LENIENCY_SECONDS,
+        label);
+
+    final AdobeIntegrationCustomizers.Builder builder =
+        AdobeIntegrationCustomizers.builder().bearer(this);
+    if (config.set_api_key_header()) {
+      builder.apiKey(clientId);
+    }
+    addCommonHeaders(builder, config);
+    composedCustomizer = builder.build();
+  }
+
+  private void activateSharedMode(
+      @NonNull final Config config,
+      @NonNull final BundleContext bundleContext,
+      @NonNull final String credentialId,
+      @NonNull final String label) {
+    warnIfSharedModeIgnoresTokenFields(config, label);
+
+    final String filter = "(&("
+        + OsgiAccessTokenSupplierType.PROPERTY_NAME + "="
+        + OsgiAccessTokenSupplierType.VALUE_OAUTH_CLIENT_CREDENTIALS + ")"
+        + "(credential.id=" + credentialId + "))";
+    final ServiceTracker<AccessTokenSupplier, AccessTokenSupplier> tracker;
+    try {
+      tracker = new ServiceTracker<>(
+          bundleContext,
+          bundleContext.createFilter(filter),
+          null);
+    } catch (InvalidSyntaxException e) {
+      throw new ComponentException(
+          "Malformed credential.id '" + credentialId + "': " + e.getMessage());
+    }
+    tracker.open();
+    sharedSupplierTracker = tracker;
+
+    if (tracker.getService() != null) {
       log.info(
           "{} '{}' activated (shared credential id='{}', orgIdHeaderValue='{}')",
           getClass().getSimpleName(),
           label,
           credentialId,
           config.org_id_header_value());
-
-      nextBearerSource = shared;
-      nextSharedRef = chosen;
+    } else {
+      log.info(
+          "{} '{}' activated (shared credential id='{}'; supplier not yet registered, will "
+              + "attach when it appears)",
+          getClass().getSimpleName(),
+          label,
+          credentialId);
     }
 
-    // Pass `this` rather than `nextBearerSource` so the registered interceptor holds the
-    // stable component reference. On credential rotation (@Modified re-activation), `bearerSource`
-    // is updated below; any interceptor registered before re-activation transparently picks up
-    // the new acquirer on the next request without requiring a pool rebuild.
     final AdobeIntegrationCustomizers.Builder builder =
         AdobeIntegrationCustomizers.builder().bearer(this);
-
     if (config.set_api_key_header()) {
-      final String apiKey = resolveApiKeyHeaderValue(config, nextSharedRef);
-      if (apiKey.isBlank()) {
-        if (nextSharedRef != null) {
-          bundleContext.ungetService(nextSharedRef);
-        }
-        throw new ComponentException(
-            "set.api.key.header is true but no client id is available for x-api-key "
-                + "(set clientId on this integration or on the shared OAuth supplier).");
+      final String configuredClientId = nullToEmpty(config.clientId()).trim();
+      if (!configuredClientId.isEmpty()) {
+        builder.apiKey(configuredClientId);
+      } else {
+        builder.apiKey(this::resolveApiKeyFromTracker);
       }
-      builder.apiKey(apiKey);
     }
+    addCommonHeaders(builder, config);
+    composedCustomizer = builder.build();
+  }
+
+  private void addCommonHeaders(
+      @NonNull final AdobeIntegrationCustomizers.Builder builder,
+      @NonNull final Config config) {
     final String orgIdHeaderValue = config.org_id_header_value();
     if (orgIdHeaderValue != null && !orgIdHeaderValue.isBlank()) {
       builder.orgIdHeader(orgIdHeaderValue);
     }
     parseKeyValuePairs(config.additional_headers())
         .forEach(builder::additionalHeader);
+  }
 
-    final HttpClientCustomizer nextCustomizer = builder.build();
-
-    this.bearerSource = nextBearerSource;
-    this.sharedCredentialRef = nextSharedRef;
-    this.composedCustomizer = nextCustomizer;
+  private String resolveApiKeyFromTracker() {
+    final ServiceTracker<AccessTokenSupplier, AccessTokenSupplier> tracker = sharedSupplierTracker;
+    if (tracker == null) {
+      return "";
+    }
+    final ServiceReference<AccessTokenSupplier> ref = tracker.getServiceReference();
+    if (ref == null) {
+      return "";
+    }
+    final Object p = ref.getProperty("clientId");
+    return p == null ? "" : p.toString().trim();
   }
 
   private static void warnIfSharedModeIgnoresTokenFields(
@@ -306,63 +308,62 @@ public class AdobeIntegrationConfiguration implements AccessTokenSupplier, HttpC
     return s == null ? "" : s;
   }
 
-  private static ServiceReference<AccessTokenSupplier> selectHighestRanking(
-      @NonNull final List<ServiceReference<AccessTokenSupplier>> refs) {
-    final List<ServiceReference<AccessTokenSupplier>> list = new ArrayList<>(refs);
-    if (list.isEmpty()) {
-      throw new IllegalArgumentException("Cannot select from empty service reference collection");
-    }
-    list.sort(
-        Comparator.comparingInt(
-            ref -> {
-              final Object v = ref.getProperty(Constants.SERVICE_RANKING);
-              return v instanceof Integer ? (Integer) v : 0;
-            }));
-    return list.get(list.size() - 1);
-  }
-
-  private static String resolveApiKeyHeaderValue(
-      @NonNull final Config config,
-      final ServiceReference<AccessTokenSupplier> sharedRef) {
-    final String fromConfig = nullToEmpty(config.clientId()).trim();
-    if (!fromConfig.isEmpty()) {
-      return fromConfig;
-    }
-    if (sharedRef != null) {
-      final Object p = sharedRef.getProperty("clientId");
-      if (p != null) {
-        final String s = p.toString().trim();
-        if (!s.isEmpty()) {
-          return s;
-        }
-      }
-    }
-    return "";
-  }
-
+  /**
+   * Intentionally a no-op.
+   * <p>
+   * {@link org.kttn.aem.http.HttpClientProvider} caches HTTP clients by key for the lifetime of
+   * the foundation bundle. When this component is deactivated and re-created (e.g., after a
+   * config-only redeploy), the cached client's bearer interceptor still holds the OLD instance
+   * via {@code bearer(this)}. If we closed the {@code ServiceTracker} or nulled out the
+   * acquirer here, that interceptor would throw {@code TokenUnavailableException} on every
+   * request until the foundation bundle restarts.
+   * <p>
+   * Instead we leave the tracker open so the OLD instance keeps serving correct tokens via the
+   * still-valid OSGi registry. The instance becomes garbage when the foundation bundle stops
+   * and {@code HttpClientProvider}'s cache is cleared — at which point the tracker is GC'd along
+   * with it.
+   * <p>
+   * For {@code @Modified} re-activation (same instance, config change) the cleanup happens at
+   * the top of {@link #activate}: the previous tracker is closed and a fresh one is opened.
+   */
   @Deactivate
-  protected final void deactivate(@NonNull final BundleContext bundleContext) {
-    releaseSharedCredential(bundleContext);
-    bearerSource = null;
-    composedCustomizer = null;
+  protected final void deactivate() {
+    // Intentionally empty — see Javadoc.
   }
 
-  private void releaseSharedCredential(final BundleContext bundleContext) {
-    if (sharedCredentialRef != null && bundleContext != null) {
-      bundleContext.ungetService(sharedCredentialRef);
+  private void closeSharedSupplierTracker() {
+    final ServiceTracker<AccessTokenSupplier, AccessTokenSupplier> tracker = sharedSupplierTracker;
+    if (tracker != null) {
+      tracker.close();
+      sharedSupplierTracker = null;
     }
-    sharedCredentialRef = null;
   }
 
   /**
    * {@inheritDoc}
    * <p>
-   * Delegates to the inline {@link CachingTokenAcquirer} or the shared
-   * {@link AccessTokenSupplier}, depending on configuration.
+   * Delegates to the inline {@link CachingTokenAcquirer} or to the shared supplier tracked by
+   * the internal {@link ServiceTracker}. Throws {@link TokenUnavailableException} if the shared
+   * supplier is not (yet) registered.
    */
   @Override
   public AccessToken getAccessToken() throws TokenUnavailableException {
-    return bearerSource.getAccessToken();
+    final CachingTokenAcquirer inline = inlineAcquirer;
+    if (inline != null) {
+      return inline.getAccessToken();
+    }
+    final ServiceTracker<AccessTokenSupplier, AccessTokenSupplier> tracker = sharedSupplierTracker;
+    if (tracker == null) {
+      throw new TokenUnavailableException(
+          "AdobeIntegrationConfiguration is not active.");
+    }
+    final AccessTokenSupplier supplier = tracker.getService();
+    if (supplier == null) {
+      throw new TokenUnavailableException(
+          "No OAuthClientCredentialsTokenSupplier registered yet for this credential.id; "
+              + "the request will succeed once the supplier appears in the OSGi registry.");
+    }
+    return supplier.getAccessToken();
   }
 
   /**
