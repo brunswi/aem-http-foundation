@@ -196,7 +196,12 @@ Import-Package: javax.annotation;version=0.0.0,*
             <version>1.6.0</version>
             <scope>test</scope>
         </dependency>
-        <!-- Stay on Johnzon 1.x: aem-sdk-api hardcodes javax JsonProvider against Johnzon 1; 2.x is jakarta-only. -->
+        <!--
+          Stay on Johnzon 1.x. Johnzon 2.x is jakarta-only: its JsonProviderImpl extends
+          jakarta.json.spi.JsonProvider, but aem-sdk-api ships javax.json.spi.JsonProvider
+          on the test classpath. Mixing them at runtime triggers a VerifyError.
+          Do not bump to 2.x until aem-sdk-api migrates to jakarta.json.
+        -->
         <dependency>
             <groupId>org.apache.johnzon</groupId>
             <artifactId>johnzon-core</artifactId>
