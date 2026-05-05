@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.3]
+
+### Fixed
+- Replaced the 0.10.2 startup-race fix. The DS `@Reference` approach left integrations stuck
+  in `FAILED` after config-only redeploys because Felix SCR did not reliably retry them.
+  `AdobeIntegrationConfiguration` now resolves the shared supplier through an internal
+  `ServiceTracker`: `activate()` always succeeds, and `getAccessToken()` self-heals as soon
+  as the supplier registers — no bundle restart required.
+
 ## [0.10.2]
 
 ### Fixed
@@ -58,8 +67,9 @@ Initial public release.
 - AEM Granite trust store integration: server certificates managed in AEM are trusted
   alongside the JVM default trust anchors.
 
+[0.10.3]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.2...aem-http-foundation-0.10.3
 [0.10.2]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.1...aem-http-foundation-0.10.2
 [0.10.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.0...aem-http-foundation-0.10.1
-[0.10.0]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.1...aem-http-foundation-0.10.0
+[0.10.0]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.1..x.aem-http-foundation-0.10.0
 [0.9.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.9.0...aem-http-foundation-0.9.1
 [0.9.0]: https://github.com/brunswi/aem-http-foundation/releases/tag/aem-http-foundation-0.9.0
