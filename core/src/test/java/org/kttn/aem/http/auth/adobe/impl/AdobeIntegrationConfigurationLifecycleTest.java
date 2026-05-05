@@ -1,6 +1,7 @@
 package org.kttn.aem.http.auth.adobe.impl;
 
 import io.wcm.testing.mock.aem.junit5.AemContext;
+import org.apache.sling.testing.mock.osgi.MockOsgi;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -410,4 +411,56 @@ class AdobeIntegrationConfigurationLifecycleTest {
                     + "without any pool rebuild");
         }
     }
+
+    /**
+     * Regression test for the cached-HTTP-client-survives-deactivation issue.
+     * <p>
+     * {@link org.kttn.aem.http.HttpClientProvider} caches HTTP clients by key for the lifetime
+     * of the foundation bundle. After a config-only redeploy the cached client's bearer
+     * interceptor still holds the OLD {@code AdobeIntegrationConfiguration} instance via
+     * {@code bearer(this)}. {@code deactivate()} must therefore be a no-op for the
+     * tracker/inline-acquirer state, otherwise that interceptor would throw
+     * {@link org.kttn.aem.http.auth.oauth.TokenUnavailableException} on every request until
+     * the foundation bundle restarts.
+     * <p>
+     * This test verifies that {@code getAccessToken()} on a deactivated instance still works,
+     * provided the underlying supplier is still registered in the OSGi registry.
+     */
+    @Test
+    void getAccessTokenOnDeactivatedInstanceStillWorksWhileSupplierIsLive() throws Exception {
+        // Register a shared supplier so the integration can find it via its tracker.
+        org.kttn.aem.http.auth.oauth.AccessTokenSupplier sharedSupplier =
+            () -> new AccessToken("survives-deactivation", 3600);
+        context.registerService(
+            org.kttn.aem.http.auth.oauth.AccessTokenSupplier.class,
+            sharedSupplier,
+            Map.of(
+                "aem.httpfoundation.accessTokenSupplierType", "OAuthClientCredentialsTokenSupplier",
+                "credential.id", "cached-client-cred"
+            )
+        );
+
+        AdobeIntegrationConfiguration integration = context.registerInjectActivateService(
+            new AdobeIntegrationConfiguration((HttpClientProviderImpl) httpClientProvider),
+            Map.of(
+                "credential.id", "cached-client-cred",
+                "set.api.key.header", false
+            )
+        );
+
+        // Sanity: works while active.
+        assertEquals("survives-deactivation", integration.getAccessToken().getAccessToken());
+
+        // Deactivate this instance. Sling Mock calls the @Deactivate method.
+        MockOsgi.deactivate(integration, context.bundleContext());
+
+        // Crucial property: a deactivated instance whose tracker is still tracking a live
+        // supplier in the OSGi registry must keep returning tokens. This mirrors the runtime
+        // scenario where HttpClientProvider's cached HTTP client still holds the old instance
+        // via its bearer interceptor.
+        assertEquals("survives-deactivation", integration.getAccessToken().getAccessToken(),
+            "Deactivated instance must keep serving tokens — otherwise cached HTTP clients "
+                + "break across config-only redeploys");
+    }
+
 }

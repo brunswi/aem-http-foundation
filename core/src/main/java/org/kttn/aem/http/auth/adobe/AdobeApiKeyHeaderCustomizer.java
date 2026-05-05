@@ -6,6 +6,8 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.protocol.HttpContext;
 import org.kttn.aem.http.auth.HttpClientCustomizer;
 
+import java.util.function.Supplier;
+
 /**
  * Sets the Adobe API gateway header {@code x-api-key} on outbound requests.
  * <p>
@@ -16,6 +18,12 @@ import org.kttn.aem.http.auth.HttpClientCustomizer;
  * Single responsibility: only the {@code x-api-key} header. Use
  * {@link AdobeOrgIdHeaderCustomizer} for {@code x-gw-ims-org-id}, or
  * {@link AdobeIntegrationCustomizers} to assemble the full Adobe header set in one call.
+ * <p>
+ * The header value can be supplied either as a fixed {@code String} (the common case, baked in at
+ * construction time) or as a {@link Supplier} that is evaluated on every request — the latter is
+ * useful when the value depends on a service that may register asynchronously, so the customizer
+ * stays attached even before the value is known. When the supplier returns {@code null} or a blank
+ * string, the header is omitted from the request rather than set to an empty value.
  */
 public final class AdobeApiKeyHeaderCustomizer
     implements HttpClientCustomizer, HttpRequestInterceptor {
@@ -23,7 +31,7 @@ public final class AdobeApiKeyHeaderCustomizer
     /** Adobe API gateway header name; conventionally carries the OAuth {@code client_id}. */
     public static final String API_KEY_HEADER = "x-api-key";
 
-    private final String apiKey;
+    private final Supplier<String> apiKeySupplier;
 
     /**
      * @param apiKey non-null, non-blank header value (typically the Adobe Developer Console
@@ -33,7 +41,19 @@ public final class AdobeApiKeyHeaderCustomizer
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalArgumentException("apiKey must not be null or blank");
         }
-        this.apiKey = apiKey;
+        this.apiKeySupplier = () -> apiKey;
+    }
+
+    /**
+     * @param apiKeySupplier non-null supplier evaluated on every outbound request; if it returns
+     *                       {@code null} or blank, the {@code x-api-key} header is omitted for
+     *                       that request
+     */
+    public AdobeApiKeyHeaderCustomizer(final Supplier<String> apiKeySupplier) {
+        if (apiKeySupplier == null) {
+            throw new IllegalArgumentException("apiKeySupplier must not be null");
+        }
+        this.apiKeySupplier = apiKeySupplier;
     }
 
     /**
@@ -41,15 +61,19 @@ public final class AdobeApiKeyHeaderCustomizer
      */
     @Override
     public void customize(final HttpClientBuilder builder) {
-        builder.addInterceptorLast((HttpRequestInterceptor) this);
+        builder.addInterceptorLast(this);
     }
 
     /**
-     * Sets {@value #API_KEY_HEADER} unconditionally; an existing value on the request is
-     * overwritten so the customizer's view always wins.
+     * Sets {@value #API_KEY_HEADER} from the configured value or supplier; an existing value on
+     * the request is overwritten so the customizer's view always wins. If the supplier returns
+     * {@code null} or blank the header is left untouched on this request.
      */
     @Override
     public void process(final HttpRequest request, final HttpContext context) {
-        request.setHeader(API_KEY_HEADER, apiKey);
+        final String value = apiKeySupplier.get();
+        if (value != null && !value.isBlank()) {
+            request.setHeader(API_KEY_HEADER, value);
+        }
     }
 }
