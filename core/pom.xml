@@ -69,6 +69,7 @@ Import-Package: javax.annotation;version=0.0.0,*
                             <outputDirectory>${project.basedir}</outputDirectory>
                             <thirdPartyFilename>THIRD-PARTY.txt</thirdPartyFilename>
                             <useMissingFile>true</useMissingFile>
+                            <force>true</force>
                             <includedScopes>compile,runtime</includedScopes>
                             <excludedGroups>org\.kttn\.aem</excludedGroups>
                         </configuration>
