@@ -22,7 +22,7 @@
    <groupId>org.kttn.aem</groupId>
    <artifactId>aem-http-foundation</artifactId>
    <packaging>pom</packaging>
-   <version>0.10.4</version>
+   <version>0.10.5-SNAPSHOT</version>
    <inceptionYear>2026</inceptionYear>
    <name>AEM HTTP Foundation</name>
    <description>AEM HTTP Foundation</description>
