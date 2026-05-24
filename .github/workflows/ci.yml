@@ -28,6 +28,9 @@ jobs:
       - name: Build, test, and JaCoCo reports
         run: mvn -B verify --file pom.xml
 
+      - name: Check license headers
+        run: mvn com.mycila:license-maven-plugin:check -q
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
         with:
