@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.4]
+
+### Changed
+- All Java source files and POMs now carry Apache 2.0 license headers managed by
+  `com.mycila:license-maven-plugin`. CI enforces header presence via `license:check`.
+- `THIRD-PARTY.txt` is regenerated on every build (`<force>true</force>`), keeping
+  third-party attribution in sync with dependency changes.
+- OSGi package version for `org.kttn.aem.http` bumped to `1.0.0`.
+
 ## [0.10.3]
 
 ### Fixed
@@ -67,6 +76,7 @@ Initial public release.
 - AEM Granite trust store integration: server certificates managed in AEM are trusted
   alongside the JVM default trust anchors.
 
+[0.10.4]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.3...aem-http-foundation-0.10.4
 [0.10.3]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.2...aem-http-foundation-0.10.3
 [0.10.2]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.1...aem-http-foundation-0.10.2
 [0.10.1]: https://github.com/brunswi/aem-http-foundation/compare/aem-http-foundation-0.10.0...aem-http-foundation-0.10.1
