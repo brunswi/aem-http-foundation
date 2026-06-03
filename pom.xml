@@ -82,7 +82,7 @@
       <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
       <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
       <aem.sdk.api>2026.4.25520.20260417T163942Z-260300</aem.sdk.api>
-      <aemanalyser.version>1.6.18</aemanalyser.version>
+      <aemanalyser.version>1.6.20</aemanalyser.version>
       <componentGroupName>AEM HTTP Foundation</componentGroupName>
       <lombok.version>1.18.46</lombok.version>
       <!-- Mockito: version used for dependencyManagement and Surefire -javaagent (avoids JDK 21+ self-attach / Byte Buddy dynamic agent warnings). -->
