@@ -311,7 +311,7 @@
             <plugin>
                <groupId>org.apache.maven.plugins</groupId>
                <artifactId>maven-surefire-plugin</artifactId>
-               <version>3.5.5</version>
+               <version>3.5.6</version>
                <configuration>
                   <useSystemClassLoader>false</useSystemClassLoader>
                   <!-- Load Mockito as a JVM agent at fork startup (see Mockito javadoc "0.3") so the inline mock maker does not self-attach. That removes JDK 21+ dynamic agent warnings from Byte Buddy. -Xshare:off avoids CDS noise when an agent is present ("bootstrap classpath has been appended"). @{argLine} is replaced by JaCoCo with its agent configuration. -->
